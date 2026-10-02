@@ -22,11 +22,12 @@ Three parts sharing the latest state, so a slow detector does not freeze the vid
    - `/` — small HTML page with the stream and live stats.
    - `/stream.mjpg` — `multipart/x-mixed-replace` MJPEG stream; each frame gets the latest boxes, labels, scores
      and FPS drawn with OpenCV, then JPEG-encoded.
-   - `/stats` — JSON with capture FPS, detection FPS, inference time and current detections.
+   - `/stats` — JSON with capture FPS, detection FPS, inference time and current detections, plus CPU temperature, ARM
+     clock and `get_throttled` flags (helpers in `pi/benchmark.py`): phase 4 found under-voltage and thermal capping.
 
 ## Steps
 
-- [ ] `pi/app.py` with CLI arguments: `--model`, `--conf`, `--threads`, `--port` (default 8000),
+- [ ] `pi/app.py` with CLI arguments: `--model`, `--conf`, `--threads` (default 2, see phase 4), `--port` (default 8000),
       `--width/--height`, `--stream-fps`, `--jpeg-quality`.
 - [ ] Check the colour order from picamera2 (`RGB888` is BGR in memory) so boxes and colours are right and the
       detector gets the channel order it expects.

@@ -54,6 +54,19 @@ Copy `pi.env.example` to `pi.env` (ignored by git) and fill in the Pi's address 
 .\.venv\Scripts\python.exe scripts\pi_remote.py run "hostname"
 ```
 
+### Deploy and benchmark
+
+Upload the Pi code and one or more exported models (run names in `runs/train/`, or model folders from a release) to
+`~/cats-localization-v2/` on the Pi, then benchmark on the Pi:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\deploy.py yolo26n_320_scale0.9
+.\.venv\Scripts\python.exe scripts\pi_remote.py run "cd ~/cats-localization-v2 && .venv/bin/python pi/benchmark.py models/yolo26n_320_scale0.9 --camera --threads 2"
+```
+
+The Pi 3B needs a solid 5.1 V / 2.5 A supply: under-voltage makes the firmware halve the CPU clock, and a heatsink
+helps under sustained load (see [docs/results.md](docs/results.md)).
+
 ## License
 
 [AGPL-3.0](LICENSE), as required by [Ultralytics](https://github.com/ultralytics/ultralytics), which this

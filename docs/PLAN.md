@@ -25,7 +25,7 @@ YOLO model exported to NCNN.
 | 1 | [Dataset conversion (VIA → YOLO)](phases/phase-1-data.md) | Done |
 | 2 | [Training on the PC](phases/phase-2-training.md) | Done |
 | 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Done |
-| 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Not started |
+| 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Done |
 | 5 | [Live stream web app on the Pi](phases/phase-5-live-stream.md) | Not started |
 | 6 | [Real camera data and retraining](phases/phase-6-real-data.md) | Not started |
 | 7 | [Performance optimisation](phases/phase-7-performance.md) | Not started |
@@ -69,6 +69,8 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-02 | Detector uses YOLO26's **one-to-many head + NMS in numpy**, not the NMS-free head | Ultralytics cannot export the end-to-end branch to NCNN (no TopK), its PyTorch predict/val use the one-to-many head by default (so every phase 2 number comes from it), and the NMS-free head is weaker on this model (mAP50-95 0.901 vs 0.944). NMS over the few boxes above 0.5 costs almost nothing. |
 | 2026-10-02 | The Pi model folder carries a **`model.json`** (class names, input size) written by `train/export.py` | Read with the standard library: the Pi needs no PyYAML for Ultralytics' `metadata.yaml`. |
 | 2026-10-02 | The Pi detector runs ncnn in **FP32** by default (FP16 storage/arithmetic off) | ncnn turns FP16 on by default on ARM but not on the PC, so FP32 keeps Pi and PC results comparable. FP16 is tried in phase 7. |
+| 2026-10-02 | **Stay at input 320** after the Pi benchmark; no 416 + `scale` 0.9 run for now | On the Pi, 320 gives ~4 FPS sustained, 416 ~2.2 and 640 ~1.1 (2 threads). Revisit 416 only if phase 6 shows missed far-away cats and the Pi has cooling and a supply that holds 4 threads (see [results.md](results.md)). |
+| 2026-10-02 | ncnn runs with **2 threads** on the Pi for now | On the current supply, 3–4 busy cores trigger under-voltage (600 MHz cap) and a sustained 4-thread run rebooted the Pi; 2 threads is the fastest setting (4.4 FPS at 320 vs 3.2 at 4 threads). Re-measure 4 threads after the power/cooling fix. |
 
 ## Environment
 
@@ -76,6 +78,7 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 |---|---|
 | **PC** | Windows 11, NVIDIA RTX 2080 Ti (11 GB, sm_75), driver 610.88. Python 3.12 venv in `.venv/` (torch 2.14.1+cu126, Ultralytics 8.4.171, ncnn 1.0.20260526, pnnx 20260526). |
 | **Pi** | Raspberry Pi 3 Model B Rev 1.2, Raspberry Pi OS Lite (Debian 13 "trixie", 64-bit, kernel 6.18), Python 3.13.5, 905 MiB RAM + 904 MiB swap. |
+| **Pi power / cooling** | Official supply, no heatsink or fan (thermal pads only; heatsink pending). Under-voltage at ≥ 3 busy cores, thermal cap above 80 °C after 1–8 min at 2 threads (phase 4). |
 | **Camera** | Camera Module v2.1 (Sony IMX219), detected by libcamera. Full field of view needs the 1640×1232 or 3280×2464 sensor mode; the 640×480 mode is a crop. |
 | **Network** | Pi at `192.168.2.112` on the local network (configured in `pi.env`). |
 

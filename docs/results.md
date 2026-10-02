@@ -2,6 +2,85 @@
 
 Metrics and benchmarks for the cats detector. Newest phase at the top of each section.
 
+## Phase 4 — deployment to the Pi and baseline benchmark (2026-10-02)
+
+Raspberry Pi 3 Model B (4× Cortex-A53 at 1.2 GHz, 905 MiB), Raspberry Pi OS Lite 64-bit (trixie, kernel 6.18),
+Python 3.13.5, ncnn 1.0.20260526 (pip), numpy 2.2.4 and OpenCV 4.10 (apt), `ondemand` governor. Official power
+supply, **no heatsink or fan** (the user added thermal pads during the long runs). Detector in FP32 with the phase 3
+models (`yolo26n_320_scale0.9`, `yolo26n_416`, `yolo26n_640`; speed depends only on the input size), confidence
+0.5. Measured with [pi/benchmark.py](../pi/benchmark.py) on camera frames (640×480, full-field-of-view 1640×1232
+sensor mode scaled by the ISP, as in the live app), 10 warm-up frames, every run started at ≤ 55 °C.
+
+> **Power and heat limit every number below.** With 3 or 4 busy cores the Pi reports **under-voltage** and the
+> firmware caps the CPU at **600 MHz**; a sustained 4-thread run made it **reboot** after ~4.5 min (most likely a
+> brownout). With 2 threads, the CPU reaches **80 °C in 1–8 min** and then runs at 820–1000 MHz. These are the
+> numbers of this Pi as it is today, not of a Pi 3B with a solid supply and a heatsink.
+
+### Pi vs PC ([tools/compare_detections.py](../tools/compare_detections.py))
+
+`pi/detector.py --json` on the same 12 images on both (8 validation frames including the hard cases
+`blacky_frame1180`, `blacky_frame340/360`, `niche_frame40/140`, plus 4 frames from the ×0.25 shrunken set),
+4 threads, FP32, confidence 0.25:
+
+| Images | Boxes PC / Pi / paired | Min IoU | Max score diff | Max corner diff |
+|---|---|---|---|---|
+| 12 | 20 / 20 / 20 | 1.0000 | 0.000 | 0.001 px |
+
+The JSON files round to 3 decimals, so the Pi and the PC agree to within that rounding. A doctored file (one
+shifted box, one changed class, one score −0.05, one missing box) fails all four checks.
+
+### Threads (320, camera, 300 frames)
+
+| Threads | Capture | Preprocess | Inference mean / p95 | Total mean | FPS | ARM clock mean | Under-voltage samples | Max temp |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 7.7 ms | 7.0 ms | 319 / 338 ms | 335 ms | 2.98 | 1200 MHz | 0 / 21 | 75 °C |
+| **2** | 7.5 ms | 7.3 ms | **213 / 219 ms** | 229 ms | **4.36** | 1153 MHz | 1 / 14 | 81 °C |
+| 3 | 14.8 ms | 12.0 ms | 310 / 323 ms | 340 ms | 2.94 | 714 MHz | 17 / 21 | 70 °C |
+| 4 | 14.8 ms | 12.3 ms | 285 / 298 ms | 314 ms | 3.18 | 632 MHz | 18 / 19 | 69 °C |
+
+- **2 threads is the fastest setting on this supply.** At 3 and 4 threads the supply voltage drops below the
+  threshold almost at once (`get_throttled` 0x50005: under-voltage + throttled), the clock halves, and every stage
+  slows down (capture and preprocessing too). Postprocessing (NMS in numpy) is 1.3–2.4 ms.
+- At full clock, 2 threads are 1.5× faster than 1. How fast 4 threads would be at 1.2 GHz is unknown until the
+  power is fixed.
+- On 1920×1080 images (no camera), preprocessing takes 6 ms at full clock; on 640×480 camera frames it takes
+  7–9 ms, because picamera2 does its own work in the background.
+
+### Input size (2 threads, camera, 10 minutes each)
+
+| Input | Frames | First 30 s: total (FPS) | Last 2 min: total (FPS) | Inference mean / p95 | Capture / preprocess / postprocess | Peak RSS | Temp start → max | 80 °C after | Clock in last 2 min |
+|---|---|---|---|---|---|---|---|---|---|
+| **320** | 2401 | 225 ms (**4.44**) | 248 ms (**4.03**) | 231 / 350 ms | 8.8 / 8.2 / 1.6 ms | 203 MiB | 56 → 83 °C | 465 s | ~1000 MHz |
+| 416 | 1429 | 368 ms (2.72) | 448 ms (2.23) | 396 / 432 ms | 9.2 / 12.4 / 1.8 ms | 225 MiB | 61 → 84 °C | 85 s | ~870 MHz |
+| 640 | 645 | 847 ms (1.18) | 902 ms (1.11) | 903 / 1003 ms | 8.9 / 14.6 / 3.2 ms | 278 MiB | 64 → 84 °C | 76 s | ~1070 MHz |
+
+Overall FPS (whole 10 min): 4.01 / 2.39 / 1.08.
+
+- **Inference time scales with the number of pixels**: on a cool CPU, 416 costs 1.67× and 640 3.95× the time of 320
+  ((416/320)² = 1.69, (640/320)² = 4).
+- **Thermal throttling**: every size ends at 82–84 °C with the clock capped to 820–1070 MHz (`get_throttled`
+  0x70002, "ARM frequency capped"), and the latency grows by 10–20% after 1–3 minutes (416: 368 → 448 ms). The
+  320 run reached 80 °C later because it started cooler and its many under-voltage dips (27 in 7 minutes, each
+  4–16 s at 600 MHz) also cut the heat; those dips also cause its high p95 (350 ms).
+- **4 threads, sustained (320)**: the Pi rebooted ~4.5 minutes into the run (no log survives: the journal is not
+  persistent). The filesystem recovered cleanly. Not repeated, to avoid more hard resets of the SD card.
+- **Memory**: ~130 MiB after the imports (apt OpenCV, numpy, ncnn), +24 MiB for the model, 200–280 MiB peak
+  with the camera running. At least 565 MiB of the 905 MiB stay available, so memory is not a problem.
+- **SSH under load**: while the Pi is at its thermal limit, SSH logins take 20 s to over 2 minutes (ping stays at
+  5 ms; no SD-card errors in the kernel log).
+- The camera pointed at the ceiling; frame content changes only the postprocessing time, which is negligible.
+
+### Is 320 fast enough, or is 416 worth revisiting?
+
+**Stay at 320.** On this Pi, 320 gives ~4 FPS sustained, 416 ~2.2 FPS and 640 ~1.1 FPS. With the live stream
+decoupled from detection (phase 5 design), 4 detections per second keeps the boxes ~0.25 s behind the video, which
+is fine for watching cats. At 416 the boxes would lag ~0.45 s, for an accuracy gain that the (leaky) phase 2
+validation cannot show. So a 416 + `scale` 0.9 model is **not** worth training now. Revisit 416 only if both:
+
+1. Pi-camera images (phase 6) show the 320 model missing cats far from the camera, and
+2. the Pi has a heatsink and a supply that holds 4 threads. A rectangular 416×320 input (1.3× the pixels of 320²)
+   and FP16 (phase 7) might then make 416 affordable; that has to be measured.
+
 ## Phase 3 — NCNN export and PC-side verification (2026-10-02)
 
 Model: `yolo26n_320_scale0.9` (seed 0), exported with [train/export.py](../train/export.py) to NCNN (PNNX 20260526,

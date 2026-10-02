@@ -25,7 +25,8 @@ Try roughly in this order (cheapest and safest first):
       (JSON / Server-Sent Events) so the browser draws the boxes on a `<canvas>` — removes OpenCV drawing and
       JPEG encoding from the CPU.
 - [ ] **Motion gating**: run the detector only when frame differencing detects movement.
-- [ ] **Thermals**: heatsink/fan if `get_throttled` reports throttling under load.
+- [ ] **Power and thermals**: phase 4 found under-voltage at ≥ 3 threads (600 MHz cap, one reboot) and the
+      thermal cap above 80 °C at 2 threads without a heatsink. After the heatsink / supply fix, re-measure 4 threads.
 
 ## Done when
 
