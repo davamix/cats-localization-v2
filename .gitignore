@@ -1,0 +1,31 @@
+# Images and other data are shared as a zip on Google Drive (see data/README.md).
+# Only the README and the VIA annotation files are tracked.
+data/**
+!data/**/
+!data/README.md
+!data/**/cats-annotations.json
+
+# Generated datasets, training runs and weights (weights are published as GitHub Releases)
+datasets/
+runs/
+models/
+*.pt
+*.onnx
+*_ncnn_model/
+*.ncnn.param
+*.ncnn.bin
+
+# Local Pi connection settings
+pi.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Editors / OS / local tool settings
+.claude/settings.local.json
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

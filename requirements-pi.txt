@@ -1,0 +1,6 @@
+# Raspberry Pi (inference). picamera2, numpy and OpenCV come from apt:
+#   sudo apt install --no-install-recommends python3-picamera2 python3-opencv python3-venv python3-pip
+#   python3 -m venv --system-site-packages ~/cats-localization-v2/.venv
+#   ~/cats-localization-v2/.venv/bin/pip install --no-deps -r requirements-pi.txt
+# --no-deps: the ncnn wheel lists opencv-python/tqdm/requests/portalocker, which are only used by its model zoo.
+ncnn
