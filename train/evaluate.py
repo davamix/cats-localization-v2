@@ -9,7 +9,7 @@ with the wrong name counts as a class confusion instead of a miss plus a false p
 (seeded) position on a grey canvas of the original size: a rough proxy for cats far from the camera, since every
 cat in the dataset fills a large part of the frame. The copies are written to datasets/<dataset>_val_x<factor>/.
 
-Output in runs/eval/<name>/ (default name: <run>_imgsz<imgsz>):
+Output in runs/eval/<name>/ (default name: <run>_imgsz<imgsz>, plus _ncnn for an exported NCNN model folder):
     summary.json                    all metrics, per shrink factor
     x<factor>/failures/<image>.jpg  images with a wrong class, missed cat, false positive or duplicate box
                                     (ground truth in white, predictions in class colours)
@@ -17,6 +17,7 @@ Output in runs/eval/<name>/ (default name: <run>_imgsz<imgsz>):
     python train/evaluate.py yolo26n_320                  # run name in runs/train/; imgsz from its args.yaml
     python train/evaluate.py yolo26n_320 --shrink 1 0.5 0.25
     python train/evaluate.py path/to/best.pt --imgsz 416 --conf 0.4
+    python train/evaluate.py runs/train/yolo26n_320/weights/best_ncnn_model     # exported model (train/export.py)
 """
 import argparse
 import json
@@ -39,12 +40,13 @@ COLOURS = [(0, 140, 255), (255, 200, 0), (80, 220, 80), (200, 80, 255), (60, 60,
 
 
 def resolve_weights(weights: str) -> tuple[Path, str, int | None]:
-    """Return (weights path, run name, training imgsz) for a weights file or a run name in runs/train/."""
+    """Return (weights path, run name, training imgsz) for a weights file, an exported model folder
+    (e.g. best_ncnn_model/) or a run name in runs/train/."""
     path = Path(weights)
-    if not path.is_file():
+    if not path.exists():
         path = TRAIN_RUNS_DIR / weights / "weights" / "best.pt"
-    if not path.is_file():
-        raise FileNotFoundError(f"no weights file {weights} and no run {path.parent.parent}")
+    if not path.exists():
+        raise FileNotFoundError(f"no weights file or model folder {weights} and no run {path.parent.parent}")
     args_file = path.parent.parent / "args.yaml"
     if args_file.is_file():
         return path, path.parent.parent.name, yaml.safe_load(args_file.read_text(encoding="utf-8"))["imgsz"]
@@ -246,7 +248,9 @@ def print_split(label: str, result: dict, conf: float, failures_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("weights", help="run name in runs/train/ (uses weights/best.pt) or a weights file")
+    parser.add_argument(
+        "weights", help="run name in runs/train/ (uses weights/best.pt), a weights file or an exported model folder"
+    )
     parser.add_argument("--data", type=Path, default=REPO_ROOT / "datasets" / "cats" / "cats.yaml")
     parser.add_argument("--imgsz", type=int, help="inference size (default: the run's training imgsz, else 640)")
     parser.add_argument("--conf", type=float, default=0.25, help="confidence threshold for P/R, confusions, failures")
@@ -260,7 +264,9 @@ def main():
 
     weights, run_name, train_imgsz = resolve_weights(args.weights)
     imgsz = args.imgsz or train_imgsz or 640
-    out_dir = EVAL_RUNS_DIR / (args.name or f"{run_name}_imgsz{imgsz}")
+    # An exported model folder (best_ncnn_model/) gets its format in the default name, next to the .pt evaluation.
+    export_format = weights.name.removesuffix("_model").rsplit("_", 1)[-1] if weights.is_dir() else None
+    out_dir = EVAL_RUNS_DIR / (args.name or f"{run_name}_imgsz{imgsz}" + (f"_{export_format}" if export_format else ""))
     model = YOLO(weights)
     data_yaml = args.data.resolve()
 

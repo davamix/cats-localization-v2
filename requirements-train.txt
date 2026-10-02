@@ -1,5 +1,10 @@
 # PC (training, export, Pi remote access). Install PyTorch with CUDA first:
 #   python -m pip install torch==2.14.1 torchvision --index-url https://download.pytorch.org/whl/cu126
 #   python -m pip install -r requirements-train.txt
+#   python -m pip install --no-deps ncnn==1.0.20260526
 ultralytics
 paramiko
+# NCNN export (train/export.py) and PC-side verification of pi/detector.py (tools/verify_ncnn.py).
+# pnnx is the version Ultralytics 8.4.171 pins. ncnn matches the Pi; install it with --no-deps (above) because its
+# wheel lists opencv-python, tqdm, requests and portalocker, which are only used by its model zoo.
+pnnx==20260526

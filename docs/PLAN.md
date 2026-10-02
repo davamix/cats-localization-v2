@@ -24,7 +24,7 @@ YOLO model exported to NCNN.
 | 0 | [Environment and repository setup](phases/phase-0-setup.md) | Done |
 | 1 | [Dataset conversion (VIA → YOLO)](phases/phase-1-data.md) | Done |
 | 2 | [Training on the PC](phases/phase-2-training.md) | Done |
-| 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Not started |
+| 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Done |
 | 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Not started |
 | 5 | [Live stream web app on the Pi](phases/phase-5-live-stream.md) | Not started |
 | 6 | [Real camera data and retraining](phases/phase-6-real-data.md) | Not started |
@@ -57,7 +57,7 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 
 | Date | Decision | Why |
 |---|---|---|
-| 2026-10-02 | **YOLO26n** (Ultralytics) instead of RF-DETR | The Pi 3B is CPU-only (4× Cortex-A53 @ 1.2 GHz, 1 GB RAM). RF-DETR is a transformer meant for GPUs/accelerators and would take seconds per frame; YOLO26n is designed for CPU/edge inference and is NMS-free. |
+| 2026-10-02 | **YOLO26n** (Ultralytics) instead of RF-DETR | The Pi 3B is CPU-only (4× Cortex-A53 @ 1.2 GHz, 1 GB RAM). RF-DETR is a transformer meant for GPUs/accelerators and would take seconds per frame; YOLO26n is designed for CPU/edge inference. (Its NMS-free head is not used: see the one-to-many head decision below.) |
 | 2026-10-02 | **NCNN** runtime on the Pi; inference code uses only `ncnn` + `numpy` (+ OpenCV for drawing) | NCNN is the fastest Ultralytics export format on Raspberry Pi; avoiding PyTorch/Ultralytics on a 1 GB board saves RAM and install pain. |
 | 2026-10-02 | **One class per individual** (`Blacky`, `Niche`) | Simplest design that runs fully on the Pi. Known limitation: closed-set, so an unknown cat will be labelled as one of ours. Revisit in phase 8. |
 | 2026-10-02 | Pi output is a **live MJPEG stream** viewed in the browser | User choice. Performance tuning is deferred to phase 7. |
@@ -66,12 +66,15 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-02 | Repo license **AGPL-3.0** | The project uses Ultralytics, which is AGPL-3.0. |
 | 2026-10-02 | Pi access via **password SSH** with a paramiko helper ([scripts/pi_remote.py](../scripts/pi_remote.py)), credentials in an untracked `pi.env` | SSH key login was not set up (see phase 0 handover notes). Everything runs on the local network. |
 | 2026-10-02 | Deployment candidate: **YOLO26n at input size 320, trained with `scale` 0.9**, confidence 0.5 | Same scores as 416/640 on the (leaky) validation set, ~4× less compute than 640, and the stronger scale augmentation is the only setting that still finds small cats (see [results.md](results.md)). Revisit 416 after the Pi benchmark (phase 4). |
+| 2026-10-02 | Detector uses YOLO26's **one-to-many head + NMS in numpy**, not the NMS-free head | Ultralytics cannot export the end-to-end branch to NCNN (no TopK), its PyTorch predict/val use the one-to-many head by default (so every phase 2 number comes from it), and the NMS-free head is weaker on this model (mAP50-95 0.901 vs 0.944). NMS over the few boxes above 0.5 costs almost nothing. |
+| 2026-10-02 | The Pi model folder carries a **`model.json`** (class names, input size) written by `train/export.py` | Read with the standard library: the Pi needs no PyYAML for Ultralytics' `metadata.yaml`. |
+| 2026-10-02 | The Pi detector runs ncnn in **FP32** by default (FP16 storage/arithmetic off) | ncnn turns FP16 on by default on ARM but not on the PC, so FP32 keeps Pi and PC results comparable. FP16 is tried in phase 7. |
 
 ## Environment
 
 | | |
 |---|---|
-| **PC** | Windows 11, NVIDIA RTX 2080 Ti (11 GB, sm_75), driver 610.88. Python 3.12 venv in `.venv/`. |
+| **PC** | Windows 11, NVIDIA RTX 2080 Ti (11 GB, sm_75), driver 610.88. Python 3.12 venv in `.venv/` (torch 2.14.1+cu126, Ultralytics 8.4.171, ncnn 1.0.20260526, pnnx 20260526). |
 | **Pi** | Raspberry Pi 3 Model B Rev 1.2, Raspberry Pi OS Lite (Debian 13 "trixie", 64-bit, kernel 6.18), Python 3.13.5, 905 MiB RAM + 904 MiB swap. |
 | **Camera** | Camera Module v2.1 (Sony IMX219), detected by libcamera. Full field of view needs the 1640×1232 or 3280×2464 sensor mode; the 640×480 mode is a crop. |
 | **Network** | Pi at `192.168.2.112` on the local network (configured in `pi.env`). |

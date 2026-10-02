@@ -2,6 +2,66 @@
 
 Metrics and benchmarks for the cats detector. Newest phase at the top of each section.
 
+## Phase 3 — NCNN export and PC-side verification (2026-10-02)
+
+Model: `yolo26n_320_scale0.9` (seed 0), exported with [train/export.py](../train/export.py) to NCNN (PNNX 20260526,
+ncnn 1.0.20260526), FP32, fixed input 1×3×320×320. Published in Release
+[v0.1.0](https://github.com/davamix/cats-localization-v2/releases/tag/v0.1.0). Same leaky validation set as
+phase 2: these numbers show that NCNN matches PyTorch, not real-world accuracy.
+
+### Exported model
+
+| | |
+|---|---|
+| Files | `model.ncnn.param` (26 KB, 320 layers), `model.ncnn.bin` (9.5 MB), `metadata.yaml`, `model.json` |
+| Input | `in0`: (3, 320, 320) RGB in [0, 1], letterboxed (aspect ratio kept, grey 114 padding) |
+| Output | `out0`: (6, 2100) — one column per anchor (40² + 20² + 10² at strides 8/16/32), rows `cx, cy, w, h` (input pixels), `score Blacky`, `score Niche` (sigmoid) |
+| Postprocessing | not in the graph: best class per anchor, score > 0.5, class-aware NMS at IoU 0.7, undo the letterbox ([pi/detector.py](../pi/detector.py)) |
+
+**Which head.** YOLO26 has two detection heads: a one-to-many head that needs NMS and an end-to-end (NMS-free)
+one-to-one head. Ultralytics 8.4.171 disables the end-to-end branch for NCNN (no TopK in NCNN), and its PyTorch
+predict/val also use the one-to-many head + NMS unless `nms=False` is passed, so **every phase 2 number already
+comes from the one-to-many head**. The NMS-free head is weaker on this fine-tuned model (PyTorch, ×1 validation):
+
+| Head | mAP50 | mAP50-95 | Boxes at confidence 0.5 (43 cats) |
+|---|---|---|---|
+| one-to-many + NMS (Ultralytics default, exported) | 0.995 | 0.944 | 47 |
+| one-to-one, NMS-free (`nms=False`) | 0.966 | 0.901 | 35 |
+
+### NCNN detector vs PyTorch ([tools/verify_ncnn.py](../tools/verify_ncnn.py))
+
+`pi/detector.py` (ncnn + numpy) against Ultralytics PyTorch predict with the same square 320×320 letterbox (CPU,
+FP32), confidence 0.5 for the box comparison and 0.001 for mAP:
+
+| Validation | Raw output max \|diff\| (boxes / scores) | Boxes PyTorch / NCNN / paired | Min IoU of pairs | Max score diff | mAP50 (both) | mAP50-95 (both) |
+|---|---|---|---|---|---|---|
+| ×1 | 0.0025 px / 4e-6 | 47 / 47 / 47 | 1.0000 | < 0.0001 | 0.9926 | 0.9474 |
+| ×0.5 | 0.0052 px / 4e-6 | 47 / 47 / 47 | 1.0000 | < 0.0001 | 0.9703 | 0.8914 |
+| ×0.25 | 0.0029 px / 7e-6 | 49 / 49 / 49 | 1.0000 | < 0.0001 | 0.9776 | 0.7610 |
+
+- The detector's preprocessing (ncnn's `from_pixels_resize` + `copy_make_border`) is bit-identical to Ultralytics'
+  `LetterBox` on the validation frames (max pixel difference 0/255).
+- Negative check: feeding the network BGR instead of RGB makes the script fail (10 box differences, mAP50-95
+  −0.026 at ×1), so the comparison does catch preprocessing bugs.
+- Detector time on the PC (i7-8700K, 4 threads, median): preprocess 2.5 ms, inference 17–20 ms, postprocess
+  0.4 ms. Only a reference; the Pi is measured in phase 4.
+
+### NCNN model through train/evaluate.py, confidence 0.5
+
+Ultralytics' own NCNN backend. NCNN models take a fixed square 320×320 input; the phase 2 PyTorch evaluation used
+rectangular 320×192 input for the 16:9 frames. Errors as missed / false positives (incl. duplicates), 43 cats per
+column; no Blacky ↔ Niche confusion in either.
+
+| Model (input) | ×1 mAP50-95 | ×1 | ×0.5 mAP50-95 | ×0.5 | ×0.25 mAP50 | ×0.25 mAP50-95 | ×0.25 |
+|---|---|---|---|---|---|---|---|
+| PyTorch (rect 320×192, phase 2) | 0.944 | 0 / 4 | 0.882 | 2 / 5 | 0.960 | 0.762 | 1 / 6 |
+| NCNN (square 320×320) | 0.947 | 1 / 5 | 0.891 | 2 / 6 | 0.978 | 0.761 | 2 / 8 |
+
+The differences come from the input shape, not from NCNN (NCNN and PyTorch give identical boxes on the same input,
+see above), and are within the seed-to-seed noise of phase 2. The extra errors are the known ones: dark objects
+labelled Blacky (`blacky_frame1180`) and Niche's dark patch labelled Blacky in `niche_frame40`, which with the
+square input now also happens at ×1 (Blacky 0.71, and the Niche box is lost).
+
 ## Phase 2 — training on the PC (2026-10-02)
 
 > **Read these numbers with care.** The validation set (43 video frames) is leaky: many frames are near-duplicates
@@ -19,6 +79,8 @@ Metrics and benchmarks for the cats detector. Newest phase at the top of each se
   Default augmentation: mosaic 1.0 (off for the last 10 epochs), horizontal flip 0.5, HSV 0.015/0.7/0.4,
   translate 0.1. `best.pt` is chosen by validation mAP50-95 (so it is optimistic too).
 - Evaluation with [train/evaluate.py](../train/evaluate.py):
+  - Predictions from YOLO26's one-to-many head + NMS (IoU 0.7), Ultralytics' default; not the NMS-free head (see
+    phase 3).
   - mAP50 and mAP50-95 from Ultralytics validation (confidence 0.001).
   - Precision, recall, the confusion matrix and the error counts at a fixed confidence (0.25 unless stated) and
     IoU 0.5, matching each prediction to the cat it overlaps most regardless of class.
