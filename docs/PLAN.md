@@ -22,7 +22,7 @@ YOLO model exported to NCNN.
 | Phase | Document | Status |
 |---|---|---|
 | 0 | [Environment and repository setup](phases/phase-0-setup.md) | Done |
-| 1 | [Dataset conversion (VIA → YOLO)](phases/phase-1-data.md) | Not started |
+| 1 | [Dataset conversion (VIA → YOLO)](phases/phase-1-data.md) | Done |
 | 2 | [Training on the PC](phases/phase-2-training.md) | Not started |
 | 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Not started |
 | 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Not started |
@@ -83,7 +83,9 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | validation | 21 | 22 | 43 | Video frames, 1920×1080 — consecutive frames are highly correlated, so validation scores will be optimistic |
 
 Every image contains exactly one polygon (one cat). There are no images with both cats together and no images
-without cats; phase 6 adds those using the Pi camera.
+without cats; phase 6 adds those using the Pi camera. Two more limitations found in phase 1: many validation frames
+are near-duplicates of training photos (validation scores will be inflated), and the cats are always large in the
+frame (box width ≥ 18% of the image), unlike what a fixed camera across a room will see.
 
 ## Repository layout
 

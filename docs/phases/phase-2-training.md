@@ -31,9 +31,11 @@ Fine-tune YOLO26n on the cats dataset with the RTX 2080 Ti and pick a model and 
 
 ## Notes
 
-- The validation set is video frames (highly correlated), so its scores are optimistic. The real test is the Pi
-  camera (phases 4–6).
+- The validation set is video frames (highly correlated) and many of them are near-duplicates of training photos
+  (see phase 1 handover notes), so its scores are optimistic. The real test is the Pi camera (phases 4–6).
 - Training at the deployment input size usually works better than training at 640 and running at 320.
+- In the training photos the cats are always large (box width ≥ 18% of the image). Try a run with stronger scale
+  augmentation (Ultralytics `scale`, default 0.5) so the model also sees small cats, as a fixed Pi camera will.
 
 ## Handover notes
 
