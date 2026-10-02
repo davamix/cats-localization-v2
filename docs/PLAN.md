@@ -23,7 +23,7 @@ YOLO model exported to NCNN.
 |---|---|---|
 | 0 | [Environment and repository setup](phases/phase-0-setup.md) | Done |
 | 1 | [Dataset conversion (VIA → YOLO)](phases/phase-1-data.md) | Done |
-| 2 | [Training on the PC](phases/phase-2-training.md) | Not started |
+| 2 | [Training on the PC](phases/phase-2-training.md) | Done |
 | 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Not started |
 | 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Not started |
 | 5 | [Live stream web app on the Pi](phases/phase-5-live-stream.md) | Not started |
@@ -65,6 +65,7 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-02 | Annotations (`data/*/cats-annotations.json`) are committed; **images are not** | Images are shared as a zip on Google Drive (link in [data/README.md](../data/README.md)). |
 | 2026-10-02 | Repo license **AGPL-3.0** | The project uses Ultralytics, which is AGPL-3.0. |
 | 2026-10-02 | Pi access via **password SSH** with a paramiko helper ([scripts/pi_remote.py](../scripts/pi_remote.py)), credentials in an untracked `pi.env` | SSH key login was not set up (see phase 0 handover notes). Everything runs on the local network. |
+| 2026-10-02 | Deployment candidate: **YOLO26n at input size 320, trained with `scale` 0.9**, confidence 0.5 | Same scores as 416/640 on the (leaky) validation set, ~4× less compute than 640, and the stronger scale augmentation is the only setting that still finds small cats (see [results.md](results.md)). Revisit 416 after the Pi benchmark (phase 4). |
 
 ## Environment
 
