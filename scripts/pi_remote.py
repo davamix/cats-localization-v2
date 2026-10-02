@@ -8,6 +8,9 @@ Usage:
     python scripts/pi_remote.py run --sudo "apt-get update"
     python scripts/pi_remote.py put pi ~/cats-localization-v2/pi        # file or folder, recursive
     python scripts/pi_remote.py get ~/capture.jpg captures/capture.jpg
+
+From Git Bash, set MSYS_NO_PATHCONV=1 when passing absolute remote paths (e.g. /tmp/x.jpg), otherwise they are
+rewritten into Windows paths.
 """
 import argparse
 import os

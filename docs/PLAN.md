@@ -21,7 +21,7 @@ YOLO model exported to NCNN.
 
 | Phase | Document | Status |
 |---|---|---|
-| 0 | [Environment and repository setup](phases/phase-0-setup.md) | In progress |
+| 0 | [Environment and repository setup](phases/phase-0-setup.md) | Done |
 | 1 | [Dataset conversion (VIA → YOLO)](phases/phase-1-data.md) | Not started |
 | 2 | [Training on the PC](phases/phase-2-training.md) | Not started |
 | 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Not started |
