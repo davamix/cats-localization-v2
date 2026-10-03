@@ -14,7 +14,37 @@ sensor mode scaled by the ISP, as in the live app), 10 warm-up frames, every run
 > **Power and heat limit every number below.** With 3 or 4 busy cores the Pi reports **under-voltage** and the
 > firmware caps the CPU at **600 MHz**; a sustained 4-thread run made it **reboot** after ~4.5 min (most likely a
 > brownout). With 2 threads, the CPU reaches **80 °C in 1–8 min** and then runs at 820–1000 MHz. These are the
-> numbers of this Pi as it is today, not of a Pi 3B with a solid supply and a heatsink.
+> numbers of the Pi on 2026-10-02. **The 2026-10-03 rerun below, after a cooling upgrade, replaces the 2-thread
+> numbers**; the power limit at 3–4 threads is still there.
+
+### Rerun after the cooling and power-supply upgrade (2026-10-03)
+
+The user upgraded the cooling and changed the supply to a USB-C charger (5 V, 3.6 A, 18 W) feeding the Pi through a
+USB-C → micro-USB adapter. Idle temperature dropped from 53 °C to 39 °C. Same models, camera frames and
+settings as above, except that runs start at ≤ 45 °C. Every run was guarded by a watcher on the Pi: it logged
+temperature, clock and throttle flags every 2 s (synced to disk, so the log would survive a reset) and stopped
+the benchmark after 30 s of continuous under-voltage. There was no reset.
+
+**4 threads is still blocked by under-voltage.** A 60 s probe at 320 / 4 threads hit under-voltage
+(`0x50005`, 600 MHz) as soon as the 4 threads started, and the watcher stopped it after 30 s. The temperature was
+only 47 °C at that point. A check without the camera (4 threads on test images) did the same, so the camera is not
+the trigger. There was also one 4-s under-voltage during boot. The likely cause is the power path: 5.0 V instead
+of the official supply's 5.1 V, plus the adapter's contact resistance and the cable.
+
+**2 threads, 10 minutes each:**
+
+| Input | Frames | First 30 s: total (FPS) | Last 2 min: total (FPS) | Inference mean / p95 | Capture / preprocess / postprocess | Peak RSS | Temp start → max | Clock | Under-voltage samples | FPS (10 min) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **320** | 2628 | 226 ms (4.43) | 234 ms (4.27) | 211 / 224 ms | 7.5 / 7.7 / 1.4 ms | 205 MiB | 43 → 69 °C | 1200 MHz (4 short dips) | 2 / 121 | **4.39** |
+| 416 | 1615 | 371 ms (2.70) | 371 ms (2.70) | 351 / 365 ms | 7.6 / 10.8 / 1.5 ms | 226 MiB | 50 → 70 °C | 1200 MHz | 0 / 121 | **2.70** |
+| 640 | 705 | 847 ms (1.18) | 850 ms (1.18) | 827 / 843 ms | 7.7 / 13.9 / 2.0 ms | 277 MiB | 53 → 70 °C | 1200 MHz | 0 / 121 | **1.18** |
+
+- **The thermal limit is gone at 2 threads.** The CPU settles at ~70 °C (it reached 82–84 °C before), stays at
+  1.2 GHz, and the latency stays flat for the whole 10 minutes. FPS over 10 minutes improved by 9–13% (320:
+  4.01 → 4.39, 416: 2.39 → 2.70, 640: 1.08 → 1.18), and by up to 21% in the last 2 minutes (416: 2.23 → 2.70).
+  These match the cool-CPU numbers of the first run, now held for the whole run.
+- 320 still had 4 short under-voltage dips (kernel log; 2 of them fell on the benchmark's 5-s samples), which
+  cost it a few percent in the last 2 minutes. The other two sizes had none.
 
 ### Pi vs PC ([tools/compare_detections.py](../tools/compare_detections.py))
 
@@ -72,14 +102,15 @@ Overall FPS (whole 10 min): 4.01 / 2.39 / 1.08.
 
 ### Is 320 fast enough, or is 416 worth revisiting?
 
-**Stay at 320.** On this Pi, 320 gives ~4 FPS sustained, 416 ~2.2 FPS and 640 ~1.1 FPS. With the live stream
-decoupled from detection (phase 5 design), 4 detections per second keeps the boxes ~0.25 s behind the video, which
-is fine for watching cats. At 416 the boxes would lag ~0.45 s, for an accuracy gain that the (leaky) phase 2
-validation cannot show. So a 416 + `scale` 0.9 model is **not** worth training now. Revisit 416 only if both:
+**Stay at 320.** With the new cooling, 320 gives ~4.4 FPS sustained at 2 threads, 416 ~2.7 FPS and 640 ~1.2 FPS
+(before the upgrade: ~4.0 / 2.2 / 1.1). With the live stream decoupled from detection (phase 5 design), ~4
+detections per second keeps the boxes ~0.23 s behind the video, which is fine for watching cats. At 416 the boxes
+would lag ~0.37 s, for an accuracy gain that the (leaky) phase 2 validation cannot show. So a 416 + `scale` 0.9
+model is **not** worth training now. Revisit 416 only if both:
 
 1. Pi-camera images (phase 6) show the 320 model missing cats far from the camera, and
-2. the Pi has a heatsink and a supply that holds 4 threads. A rectangular 416×320 input (1.3× the pixels of 320²)
-   and FP16 (phase 7) might then make 416 affordable; that has to be measured.
+2. the Pi's supply holds 4 threads (the cooling is now good enough). A rectangular 416×320 input (1.3× the
+   pixels of 320²) and FP16 (phase 7) might then make 416 affordable; that has to be measured.
 
 ## Phase 3 — NCNN export and PC-side verification (2026-10-02)
 

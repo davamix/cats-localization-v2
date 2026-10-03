@@ -69,8 +69,8 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-02 | Detector uses YOLO26's **one-to-many head + NMS in numpy**, not the NMS-free head | Ultralytics cannot export the end-to-end branch to NCNN (no TopK), its PyTorch predict/val use the one-to-many head by default (so every phase 2 number comes from it), and the NMS-free head is weaker on this model (mAP50-95 0.901 vs 0.944). NMS over the few boxes above 0.5 costs almost nothing. |
 | 2026-10-02 | The Pi model folder carries a **`model.json`** (class names, input size) written by `train/export.py` | Read with the standard library: the Pi needs no PyYAML for Ultralytics' `metadata.yaml`. |
 | 2026-10-02 | The Pi detector runs ncnn in **FP32** by default (FP16 storage/arithmetic off) | ncnn turns FP16 on by default on ARM but not on the PC, so FP32 keeps Pi and PC results comparable. FP16 is tried in phase 7. |
-| 2026-10-02 | **Stay at input 320** after the Pi benchmark; no 416 + `scale` 0.9 run for now | On the Pi, 320 gives ~4 FPS sustained, 416 ~2.2 and 640 ~1.1 (2 threads). Revisit 416 only if phase 6 shows missed far-away cats and the Pi has cooling and a supply that holds 4 threads (see [results.md](results.md)). |
-| 2026-10-02 | ncnn runs with **2 threads** on the Pi for now | On the current supply, 3–4 busy cores trigger under-voltage (600 MHz cap) and a sustained 4-thread run rebooted the Pi; 2 threads is the fastest setting (4.4 FPS at 320 vs 3.2 at 4 threads). Re-measure 4 threads after the power/cooling fix. |
+| 2026-10-02 | **Stay at input 320** after the Pi benchmark; no 416 + `scale` 0.9 run for now | On the Pi, 320 gives ~4.4 FPS sustained, 416 ~2.7 and 640 ~1.2 (2 threads, after the 2026-10-03 cooling upgrade). Revisit 416 only if phase 6 shows missed far-away cats and the Pi's supply holds 4 threads (see [results.md](results.md)). |
+| 2026-10-02 | ncnn runs with **2 threads** on the Pi for now | 3–4 busy cores trigger under-voltage (600 MHz cap); a sustained 4-thread run rebooted the Pi on 2026-10-02, and the 2026-10-03 supply change did not fix it. 2 threads is the fastest setting (4.4 FPS at 320 vs 3.2 at 4 threads). Re-measure 4 threads after a power fix. |
 
 ## Environment
 
@@ -78,7 +78,7 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 |---|---|
 | **PC** | Windows 11, NVIDIA RTX 2080 Ti (11 GB, sm_75), driver 610.88. Python 3.12 venv in `.venv/` (torch 2.14.1+cu126, Ultralytics 8.4.171, ncnn 1.0.20260526, pnnx 20260526). |
 | **Pi** | Raspberry Pi 3 Model B Rev 1.2, Raspberry Pi OS Lite (Debian 13 "trixie", 64-bit, kernel 6.18), Python 3.13.5, 905 MiB RAM + 904 MiB swap. |
-| **Pi power / cooling** | Official supply, no heatsink or fan (thermal pads only; heatsink pending). Under-voltage at ≥ 3 busy cores, thermal cap above 80 °C after 1–8 min at 2 threads (phase 4). |
+| **Pi power / cooling** | Cooling upgraded 2026-10-03 (idle 39 °C, ~70 °C after 10 min at 2 threads, no thermal cap). Supply: USB-C charger 5 V 3.6 A 18 W through a USB-C → micro-USB adapter; under-voltage at ≥ 3 busy cores (phase 4). |
 | **Camera** | Camera Module v2.1 (Sony IMX219), detected by libcamera. Full field of view needs the 1640×1232 or 3280×2464 sensor mode; the 640×480 mode is a crop. |
 | **Network** | Pi at `192.168.2.112` on the local network (configured in `pi.env`). |
 

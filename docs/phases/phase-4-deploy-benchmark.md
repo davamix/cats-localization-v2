@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Done |
-| **Last updated** | 2026-10-02 |
+| **Last updated** | 2026-10-03 |
 | **Depends on** | Phase 3 |
 
 ## Goal
@@ -24,6 +24,8 @@ This is a measurement phase, not an optimisation phase (that is phase 7).
       on the current supply 3–4 threads trigger under-voltage (600 MHz cap), and the sustained 4-thread run at 320
       rebooted the Pi, so the user chose to run the long tests at 2 threads only.
 - [x] Add the results to [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and-baseline-benchmark-2026-10-02).
+- [x] 2026-10-03, after the user upgraded the cooling and the supply: probe 320 / 4 threads (still under-voltage,
+      stopped by the watcher after 30 s), then rerun the three 10-minute 2-thread runs (no thermal capping).
 
 ## How to run
 
@@ -81,8 +83,8 @@ three models. The results (`*.json`, `*.log`) were copied to `runs/pi/phase4/`.
 
 - A Pi 3B under sustained load can reach its thermal limit (~80 °C) and throttle. Watch the temperature and
   `get_throttled` flags during long runs; a heatsink may be needed.
-- Expected order of magnitude (estimate, to be measured): ~2 FPS at 640, more at 320. Measured: ~1.1 FPS at 640,
-  ~4 FPS at 320 (2 threads, throttled Pi).
+- Expected order of magnitude (estimate, to be measured): ~2 FPS at 640, more at 320. Measured: ~1.2 FPS at 640,
+  ~4.4 FPS at 320 (2 threads, after the cooling upgrade).
 
 ## Results
 
@@ -90,9 +92,11 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
 
 - **Pi = PC.** On 12 images (8 validation frames incl. the hard cases + 4 ×0.25 frames), confidence 0.25: 20/20
   boxes paired, IoU 1.0000, identical scores and corners to the 3 decimals of the JSON files.
-- **Speed (320, 2 threads, camera 640×480):** ~4.4 FPS on a cool CPU, **~4.0 FPS sustained** (inference
-  208 → 229 ms, capture ~8 ms, preprocess ~8 ms, postprocess ~1.5 ms). 416: 2.7 → 2.2 FPS. 640: 1.2 → 1.1 FPS.
-  Inference time scales with the number of pixels.
+- **Speed (2 threads, camera 640×480, 10 minutes):**
+  - After the cooling upgrade (2026-10-03): **320 → 4.39 FPS**, 416 → 2.70 FPS, 640 → 1.18 FPS, flat for the
+    whole run. At 320: inference 211 ms, capture ~7.5 ms, preprocess ~7.7 ms, postprocess ~1.4 ms.
+  - Before, without a heatsink: 4.01 / 2.39 / 1.08 FPS, with the latency growing 10–20% once the CPU hit 80 °C.
+  - Inference time scales with the number of pixels.
 - **Threads (320):** 1 → 2.98 FPS, **2 → 4.36 FPS**, 3 → 2.94 FPS, 4 → 3.18 FPS. 3–4 threads are slower because
   of under-voltage (see below).
 - **Memory:** 200–280 MiB peak RSS (imports ~130 MiB, model +24 MiB, camera and the rest), ≥ 565 MiB still
@@ -104,25 +108,39 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
   - Even at 2 threads there were 27 short under-voltage dips in the 320 run.
   - Without a heatsink, 2 threads reach 80 °C in 1–8 min and the firmware caps the clock to 820–1000 MHz
     (+10–20% latency).
+  - **2026-10-03:** the user upgraded the cooling and changed the supply (USB-C charger, 5 V 3.6 A 18 W, through a
+    USB-C → micro-USB adapter).
+    - Cooling is solved: idle 39 °C, ~70 °C after 10 minutes at 2 threads, no thermal cap.
+    - Under-voltage is not solved: 4 threads still trigger it within seconds, with or without the camera, and
+      there was one dip during boot. 2 threads is clean, apart from 4 short dips in the 320 run.
 - **Decision:** stay at input 320 (`yolo26n_320_scale0.9`). A 416 + `scale` 0.9 model is not worth training now.
-  Revisit only if Pi-camera images (phase 6) show missed far-away cats *and* the Pi has cooling and a supply that
-  holds 4 threads.
+  Revisit only if Pi-camera images (phase 6) show missed far-away cats *and* the Pi's supply holds 4 threads (the
+  cooling is now good enough).
 
 ## Handover notes
 
-- **Hardware first.** The user is getting a heatsink. The Pi has only thermal pads now.
-  - The user asked to **stop load tests if the Pi resets again** until then.
-  - The under-voltage also needs a look: the official supply should hold a Pi 3B at full load. Check the cable and
-    connector, and whether anything else draws power from the Pi; try another 5.1 V / 2.5 A supply.
-  - After the fix, rerun the 4-thread runs (`--threads 4 --duration 600` at 320, then 416) to see whether 4
-    threads beat 2 at full clock. The `get_throttled` "since boot" bits are sticky, so judge each run by the
-    per-sample `throttled` values in the JSON timeline (bit 0 = under-voltage now, bit 1 = frequency capped now).
+- **Hardware.** The cooling is fixed (2026-10-03). The supply still can't hold 4 threads.
+  - The current supply is a USB-C charger (5 V, 3.6 A, 18 W) feeding the Pi through a USB-C → micro-USB adapter.
+    The likely culprits are 5.0 V instead of 5.1 V and the adapter's contact resistance plus the cable. The usual
+    fix is a 5.1 V / 2.5 A micro-USB supply with an attached cable, plugged straight into the Pi.
+  - After a power fix, rerun 320 / 4 threads: first the 60 s probe, then 10 minutes. If 4 threads beats 2 at full
+    clock, rerun 416 too and update the phase 5 default.
+  - The `get_throttled` "since boot" bits are sticky, so judge each run by the per-sample `throttled` values in the
+    JSON timeline or the watcher log (bit 0 = under-voltage now, bit 1 = frequency capped now).
+  - **Control temperatures and resets in load tests** (the user's request):
+    - Ramp up: a short probe before any 10-minute run.
+    - Run the Pi-side watcher (`runs/pi/phase4b/watch.sh` on the PC, not in git). Every 2 s it appends uptime,
+      temperature, clock and throttle flags to a log synced to disk, so the log survives a reset. It stops
+      `pi/benchmark.py` after 30 s of continuous under-voltage. `run_one.sh` and `suite3.sh` in the same folder
+      show how to use it.
+    - From the PC, compare the boot time (`uptime -s`) between polls to detect a reset.
 - **For phase 5 (`pi/app.py`):**
   - Default to **`--threads 2`**. The app also captures, draws and JPEG-encodes. If that keeps a third core busy,
     the Pi may hit the under-voltage cap even with 2 ncnn threads, so put temperature, ARM clock and the throttle
     flags in `/stats`. `pi/benchmark.py` has the helpers (`cpu_temp`, `arm_clock_mhz`, `throttled`) and can be
     imported.
-  - Expect about 4 detections/s at 320. Capture (picamera2 `capture_array`, 640×480) costs ~8 ms.
+  - Expect ~4.4 detections/s at 320 (2 threads, new cooling). Capture (picamera2 `capture_array`, 640×480) costs
+    ~8 ms.
 - **Deploy:** `scripts/deploy.py [models...] [--images ... --set name]`.
   - It replaces `pi/`, `models/<name>/` and `images/<set>/` on the Pi as a whole. Model names are the training run
     names, so the app should take `--model models/yolo26n_320_scale0.9`.
@@ -130,8 +148,9 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
 - **Long jobs on the Pi:**
   - Start them with `(setsid nohup bash job.sh > job.log 2>&1 < /dev/null &)`. Without the subshell and
     redirections, `pi_remote.py run` keeps the SSH channel open until the job ends.
-  - `pi_remote.py run` has no timeout, and logins can take minutes while the Pi is at its thermal limit. Wrap polls
-    in `timeout 90` (Git Bash) and don't add load with extra SSH sessions.
+  - `pi_remote.py run` has no timeout. Logins took minutes while the Pi sat at its thermal limit (before the
+    cooling upgrade). Wrap polls in `timeout 90` (Git Bash) and don't add load with extra SSH sessions.
   - The journal is not persistent (`journalctl -b -1` finds nothing after a reboot), so a crash leaves no log.
 - The Pi now holds `models/yolo26n_320_scale0.9`, `models/yolo26n_416`, `models/yolo26n_640`, `images/compare/` and
-  `results/` (~35 MB in total); 2.5 GB free.
+  `results/` (`phase4/` = 2026-10-02 runs, `phase4b/` = 2026-10-03 reruns; ~36 MB in total); 2.5 GB free. Both
+  result folders are also in `runs/pi/` on the PC.
