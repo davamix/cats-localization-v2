@@ -26,7 +26,7 @@ YOLO model exported to NCNN.
 | 2 | [Training on the PC](phases/phase-2-training.md) | Done |
 | 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Done |
 | 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Done |
-| 5 | [Live stream web app on the Pi](phases/phase-5-live-stream.md) | Not started |
+| 5 | [Live stream web app on the Pi](phases/phase-5-live-stream.md) | Done |
 | 6 | [Real camera data and retraining](phases/phase-6-real-data.md) | Not started |
 | 7 | [Performance optimisation](phases/phase-7-performance.md) | Not started |
 | 8 | [People (future)](phases/phase-8-people.md) | Not started |
@@ -71,6 +71,9 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-02 | The Pi detector runs ncnn in **FP32** by default (FP16 storage/arithmetic off) | ncnn turns FP16 on by default on ARM but not on the PC, so FP32 keeps Pi and PC results comparable. FP16 is tried in phase 7. |
 | 2026-10-02 | **Stay at input 320** after the Pi benchmark; no 416 + `scale` 0.9 run for now | On the Pi, 320 gives ~4.4 FPS sustained, 416 ~2.7 and 640 ~1.2 (2 threads, after the 2026-10-03 cooling upgrade). Revisit 416 only if phase 6 shows missed far-away cats and the Pi's supply holds 4 threads (see [results.md](results.md)). |
 | 2026-10-02 | ncnn runs with **2 threads** on the Pi for now | 3–4 busy cores trigger under-voltage (600 MHz cap); a sustained 4-thread run rebooted the Pi on 2026-10-02, and the 2026-10-03 supply change did not fix it. 2 threads is the fastest setting (4.4 FPS at 320 vs 3.2 at 4 threads). Re-measure 4 threads after a power fix. |
+| 2026-10-03 | The live app runs the detector in a **child process** (`multiprocessing`, spawn) | ncnn's Python binding holds the GIL during inference (~210 ms on the Pi), which would freeze the capture and stream threads. Frames go to the child over a pipe (0.9 MB per frame, ~11 ms per detection). |
+| 2026-10-03 | The camera runs at `--stream-fps` (default 15): one rate for capture and stream | No frames are captured only to be dropped; the stream shows every captured frame. |
+| 2026-10-03 | On the current supply the **live app runs ncnn with 1 thread** (`--threads 1`, ~2.9 detections/s); the code default stays 2 | With 2 threads the app (capture + drawing + JPEG + HTTP) pushes the Pi to ~2.5–2.7 busy cores as soon as someone watches, and the supply goes into continuous under-voltage (600 MHz) even at a 10 fps stream. 1 thread keeps ~1.5 cores busy at full clock. User decision (2026-10-03); go back to 2 threads after a power fix. |
 
 ## Environment
 
@@ -78,9 +81,9 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 |---|---|
 | **PC** | Windows 11, NVIDIA RTX 2080 Ti (11 GB, sm_75), driver 610.88. Python 3.12 venv in `.venv/` (torch 2.14.1+cu126, Ultralytics 8.4.171, ncnn 1.0.20260526, pnnx 20260526). |
 | **Pi** | Raspberry Pi 3 Model B Rev 1.2, Raspberry Pi OS Lite (Debian 13 "trixie", 64-bit, kernel 6.18), Python 3.13.5, 905 MiB RAM + 904 MiB swap. |
-| **Pi power / cooling** | Cooling upgraded 2026-10-03 (idle 39 °C, ~70 °C after 10 min at 2 threads, no thermal cap). Supply: USB-C charger 5 V 3.6 A 18 W through a USB-C → micro-USB adapter; under-voltage at ≥ 3 busy cores (phase 4). Kept for now (user decision, 2026-10-03), so ncnn runs with 2 threads. |
+| **Pi power / cooling** | Cooling upgraded 2026-10-03 (idle 39 °C, ~70 °C after 10 min at 2 threads, no thermal cap). Supply: USB-C charger 5 V 3.6 A 18 W through a USB-C → micro-USB adapter; under-voltage at ≥ 3 busy cores (phase 4), and at ~2.2 busy cores with the live app (phase 5). Kept for now (user decision, 2026-10-03), so the benchmark runs ncnn with 2 threads and the live app with 1. |
 | **Camera** | Camera Module v2.1 (Sony IMX219), detected by libcamera. Full field of view needs the 1640×1232 or 3280×2464 sensor mode; the 640×480 mode is a crop. |
-| **Network** | Pi at `192.168.2.112` on the local network (configured in `pi.env`). |
+| **Network** | Pi at `192.168.2.112` on the local network over **Wi-Fi** (2.4 GHz; Ethernet not connected), configured in `pi.env`. A 15 fps MJPEG stream is ~4.7 Mbit/s per viewer. |
 
 ## Dataset (as of 2026-10-02)
 

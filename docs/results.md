@@ -2,6 +2,71 @@
 
 Metrics and benchmarks for the cats detector. Newest phase at the top of each section.
 
+## Phase 5 — live stream web app on the Pi (2026-10-03)
+
+[pi/app.py](../pi/app.py) on the Pi 3B: same software and model as phase 4 (`yolo26n_320_scale0.9`, FP32, confidence
+0.5), upgraded cooling, USB-C charger + micro-USB adapter supply. Camera 640×480 from the full-field-of-view
+1640×1232 sensor mode, MJPEG stream at JPEG quality 80. The detector runs in a child process; capture, drawing,
+JPEG encoding and HTTP run in the app process (see [phase 5](phases/phase-5-live-stream.md)). Measured with
+[pi/soak.py](../pi/soak.py) on the Pi (the app's `/stats` plus its own `/proc` readings every 5 s), while a client on
+the PC read `/stream.mjpg` like a browser, over the Pi's Wi-Fi. Every run was guarded by the app's own stop after
+30 s of continuous under-voltage. The Pi never reset.
+
+> **ncnn holds Python's GIL during inference.** On the PC, a thread that sleeps 1 ms at a time was blocked for up to
+> one whole inference (38 ms) while another thread ran ncnn. On the Pi that would freeze capture and streaming for
+> ~210 ms out of every ~225 ms, so the detector runs in its own process and gets frames over a pipe. The round
+> trip is inference + ~20 ms: pre- and postprocessing ~9 ms, the pipe (a pickled 0.9 MB frame) ~11 ms.
+
+### Power: 2 ncnn threads do not fit next to the stream (3-minute probes)
+
+| ncnn threads | Stream | Outcome | ARM clock | Detections/s | Inference | Boxes behind the video | CPU busy (of 4 cores) |
+|---|---|---|---|---|---|---|---|
+| 2 | none (no viewer yet) | under-voltage dips of 4–10 s | mostly 1200 MHz | 4.4 | 209 ms | 261 ms | ~2.3 cores (58%) |
+| 2 | 15 fps, 1 viewer | **continuous under-voltage**, app stopped itself after 31 s | 600 MHz | 2.6 | 360 ms | 433 ms | ~2.7 cores (68%) |
+| 2 | 10 fps, 1 viewer | **continuous under-voltage** from the first second, stopped after 31 s | 600 MHz | 2.6–3.1 | 295–355 ms | 364–433 ms | ~2.5 cores (60–68%) |
+| **1** | **15 fps, 2 viewers** | ran the full 3 min; **one 6-s dip** | 1200 MHz | 2.87 | 330 ms | 380 ms | ~1.5 cores (37%) |
+
+- On this supply the limit is about **2.2 busy cores**. The detector keeps ~2 cores busy with 2 threads. The app
+  adds ~0.3 core without viewers (capture at 15 fps, the pipe, the 2-s monitor) and ~0.7 core with a 15 fps stream
+  at 600 MHz (~0.4 at full clock). As soon as someone watches, the supply sags.
+- Under under-voltage, 2 threads give fewer detections per second (2.6) than 1 thread at full clock (2.9). So the
+  live app runs with **`--threads 1`** until the supply is fixed (user decision).
+- Drawing + JPEG encoding of one 640×480 frame: 10.6–11.5 ms at 1.2 GHz, ~21 ms at 600 MHz.
+
+### Soak test: 35 minutes at `--threads 1 --stream-fps 15`
+
+Two viewers the whole time (the PC client and the user's browser), the camera moved by hand during the run (cats
+test). 421 samples.
+
+| | |
+|---|---|
+| Crashes / resets | none; SIGTERM at the end → clean stop in 1 s, exit code 0 |
+| **RSS** (from `/proc`, start of trend → end, max) | app 175.8 → 176.1 MiB (max 177.8), detector 180.3 → 180.6 MiB (max 180.9), multiprocessing resource tracker 11.4 MiB; total 367.5 → 368.1 MiB |
+| **Memory trend** after a 5-min warm-up (least squares) | **+0.25 MiB/h in total** (app +0.22, detector +0.03): no leak |
+| MemAvailable | 574 MiB on average, min 558 MiB (of 905) |
+| Camera / stream on the Pi | 15.00 fps / 14.97 fps; drawing + JPEG 11.5 ms per frame |
+| Detection | 2.81 per second; preprocess 7.9 ms, inference 335 ms (max 10-s mean 427 ms, during an under-voltage dip), postprocess 1.3 ms, round trip through the pipe 355 ms |
+| Boxes behind the video (frame captured → detections ready) | 389 ms on average |
+| CPU | detector 99.8% of one core, app 41% (37–56%), whole system 38.5% of 4 cores |
+| Temperature | 43 °C at the start, max 64 °C, settled at ~61 °C |
+| Power | 2 under-voltage dips of 6 s, both in the first minute (startup and two viewers connecting); none in the other 34 min. 1200 MHz in 419 / 421 samples |
+| Received by the PC client | 14.09 fps over the whole run; median 15.0 fps per 10-s window, but 20 of 209 windows < 14 fps (4–10 fps around minute 1 and minutes 7–10) while the Pi rendered 15 fps |
+
+- **Stream delivery is limited by the Wi-Fi, not by the Pi's CPU.** Frames of this room are ~39 KB, so 15 fps is
+  ~4.7 Mbit/s per viewer, ~9.4 Mbit/s for two. The Pi 3B's 2.4 GHz link (signal −60 dBm, quality 50/70) sometimes
+  can't keep up. A slow viewer gets the newest frame each time and skips the rest, so the video stays live.
+- Detections during the soak (the cats came and went): Blacky in 31 of 421 samples (scores 0.50–0.96), and one
+  sample with two Niche boxes (the known "part of Niche as a second cat" error from phase 2).
+
+### Cats in the browser (user check)
+
+- **Both cats are detected and labelled correctly** when the camera points at them from close range.
+- At a wider position across the room, Blacky lying on the sofa back (~90 px wide in the 640 px frame, ~45 px at
+  the model's input) got **no box** at confidence 0.5. Phase 2 already found that the training photos only have
+  large cats; phase 6 needs Pi-camera images like this.
+- Colours are right: picamera2's `RGB888` frames are BGR in memory, which is what OpenCV and the detector expect
+  (a wooden door is orange, not blue).
+
 ## Phase 4 — deployment to the Pi and baseline benchmark (2026-10-02)
 
 Raspberry Pi 3 Model B (4× Cortex-A53 at 1.2 GHz, 905 MiB), Raspberry Pi OS Lite 64-bit (trixie, kernel 6.18),
