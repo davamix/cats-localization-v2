@@ -16,6 +16,10 @@ loop. Camera frames come from picamera2 as in camera_test.py and the live app: f
 (1640x1232) scaled by the ISP to --width x --height (640x480), RGB888 (BGR in memory). The first --warmup frames are
 not counted. --cool-to waits until the CPU is at or below that temperature before starting (camera not yet running),
 so runs start from the same thermal state. Needs ncnn, numpy and OpenCV, plus picamera2 for --camera.
+
+Safety: sustained under-voltage caps the CPU at 600 MHz and can end in a brownout reset (phase 4). When every
+sample for --stop-on-undervoltage seconds (default 30) reports under-voltage now, the run ends early: the summary
+and the JSON are still written (with "stopped_early"), and the exit code is 2. 0 disables the check.
 """
 import argparse
 import json
@@ -74,6 +78,11 @@ def throttled() -> dict:
     return {"raw": hex(value),
             "now": [name for bit, name in THROTTLE_FLAGS.items() if value >> bit & 1],
             "since_boot": [name for bit, name in THROTTLE_FLAGS.items() if value >> (bit + 16) & 1]}
+
+
+def undervoltage_now(raw: str | None) -> bool:
+    """True if a `get_throttled` value (e.g. "0x50005") reports under-voltage at this moment (bit 0)."""
+    return raw is not None and bool(int(raw, 16) & 1)
 
 
 def proc_kib(path: str, *keys: str) -> dict[str, float | None]:
@@ -216,6 +225,9 @@ def main():
     parser.add_argument("--cool-to", type=float, help="wait until the CPU is at or below this temperature (°C)")
     parser.add_argument("--cool-timeout", type=float, default=1200, help="give up waiting after this many seconds")
     parser.add_argument("--sample-every", type=float, default=5, help="seconds between temperature/clock samples")
+    parser.add_argument("--stop-on-undervoltage", type=float, default=30, metavar="S",
+                        help="end the run early (results kept, exit code 2) after S seconds of continuous "
+                             "under-voltage; 0 = never")
     parser.add_argument("--json", type=Path, help="write the summary, per-frame times and samples to this file")
     args = parser.parse_args()
     frames_target = None if args.duration else (args.frames or 300)
@@ -234,8 +246,10 @@ def main():
     print(f"model:   {model_name} ({detector.input_width}x{detector.input_height}), {args.threads} threads, FP32, "
           f"conf {args.conf}")
     print(f"source:  {source.description}")
+    safety = (f", stop after {args.stop_on_undervoltage:.0f} s of under-voltage" if args.stop_on_undervoltage
+              else ", no under-voltage stop")
     print(f"length:  {f'{frames_target} frames' if frames_target else f'{args.duration:.0f} s'} "
-          f"(+{args.warmup} warm-up)", flush=True)
+          f"(+{args.warmup} warm-up){safety}", flush=True)
 
     try:
         for _ in range(args.warmup):
@@ -244,13 +258,24 @@ def main():
         before = snapshot()
         times = {stage: [] for stage in STAGES}
         frame_t, detections_per_frame, timeline = [], [], []
+        undervoltage_since, stopped_early = None, None
         start = next_sample = time.perf_counter()
         while True:
             now = time.perf_counter()
             if now >= next_sample:
-                timeline.append({"t": round(now - start, 2), "temp_c": cpu_temp(), "arm_mhz": arm_clock_mhz(),
-                                 "throttled": throttled()["raw"]})
+                sample = {"t": round(now - start, 2), "temp_c": cpu_temp(), "arm_mhz": arm_clock_mhz(),
+                          "throttled": throttled()["raw"]}
+                timeline.append(sample)
                 next_sample += args.sample_every
+                if not undervoltage_now(sample["throttled"]):
+                    undervoltage_since = None
+                else:
+                    if undervoltage_since is None:
+                        undervoltage_since = sample["t"]
+                    lasted = sample["t"] - undervoltage_since
+                    if args.stop_on_undervoltage and lasted >= args.stop_on_undervoltage:
+                        stopped_early = f"under-voltage for {lasted:.0f} s"
+                        break
             if (frames_target and len(frame_t) >= frames_target) or (args.duration and now - start >= args.duration):
                 break
             t0 = time.perf_counter()
@@ -271,6 +296,10 @@ def main():
     finally:
         source.close()
 
+    if stopped_early:
+        print(f"\nSTOPPED EARLY: {stopped_early} (CPU capped at 600 MHz; the numbers below are not representative)")
+    if not frame_t:
+        sys.exit("no frames were timed")
     ms = {stage: np.array(values) for stage, values in times.items()}
     ms["detect"] = ms["preprocess"] + ms["infer"] + ms["postprocess"]
     ms["total"] = ms["capture"] + ms["detect"]
@@ -308,7 +337,8 @@ def main():
             "config": {"model": model_name, "imgsz": [detector.input_height, detector.input_width],
                        "threads": args.threads, "conf": args.conf, "fp16": False, "source": source.description,
                        "frames": len(t), "warmup": args.warmup, "duration_s": round(wall_s, 1),
-                       "cool_to": args.cool_to},
+                       "cool_to": args.cool_to, "stop_on_undervoltage_s": args.stop_on_undervoltage},
+            "stopped_early": stopped_early,
             "system": {"python": platform.python_version(), "ncnn": ncnn.__version__, "numpy": np.__version__,
                        "opencv": cv2.__version__, "kernel": platform.release(), "machine": platform.machine(),
                        "governor": read_text(GOVERNOR)},
@@ -322,6 +352,8 @@ def main():
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(result, indent=1), encoding="utf-8")
         print(f"\nresults: {args.json}")
+    if stopped_early:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

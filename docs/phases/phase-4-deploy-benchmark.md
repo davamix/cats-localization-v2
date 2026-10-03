@@ -66,8 +66,13 @@ Benchmark (on the Pi, from `~/cats-localization-v2`):
 
 Options: `--threads`, `--frames N` or `--duration S`, `--warmup 10`, `--conf 0.5`, `--cool-to °C` (wait before
 starting; the camera is opened afterwards), `--sample-every 5` (temperature / clock / throttle samples),
-`--width/--height` and `--sensor-size` for the camera. Long runs must survive an SSH disconnect: start them with
-`(setsid nohup ... > log 2>&1 < /dev/null &)` (see the handover notes).
+`--width/--height` and `--sensor-size` for the camera, `--stop-on-undervoltage 30` (see below). Long runs must
+survive an SSH disconnect: start them with `(setsid nohup ... > log 2>&1 < /dev/null &)` (see the handover notes).
+
+**Under-voltage stop (default on).** If every sample for `--stop-on-undervoltage` seconds (default 30) reports
+under-voltage now, the run ends early. The summary and the JSON are still written, with `"stopped_early"` set, and the
+exit code is 2. Pass `0` to turn it off (only for deliberate under-voltage tests). Added on 2026-10-03 after the
+brownout; tested on the Pi (4 threads, `--stop-on-undervoltage 10` → stopped after 10 s, exit 2, no reset).
 
 The phase 4 suite ran these from a `setsid nohup` job on the Pi (scripts kept in `runs/pi/phase4/` on the PC, not
 in git), each with `--camera --cool-to 55 --cool-timeout 900 --json results/phase4/<name>.json`:
@@ -119,7 +124,8 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
 
 ## Handover notes
 
-- **Hardware.** The cooling is fixed (2026-10-03). The supply still can't hold 4 threads.
+- **Hardware.** The cooling is fixed (2026-10-03). The supply still can't hold 4 threads, and **the user decided to
+  keep the current adapter for now**, so everything runs at 2 threads.
   - The current supply is a USB-C charger (5 V, 3.6 A, 18 W) feeding the Pi through a USB-C → micro-USB adapter.
     The likely culprits are 5.0 V instead of 5.1 V and the adapter's contact resistance plus the cable. The usual
     fix is a 5.1 V / 2.5 A micro-USB supply with an attached cable, plugged straight into the Pi.
@@ -129,10 +135,11 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
     JSON timeline or the watcher log (bit 0 = under-voltage now, bit 1 = frequency capped now).
   - **Control temperatures and resets in load tests** (the user's request):
     - Ramp up: a short probe before any 10-minute run.
-    - Run the Pi-side watcher (`runs/pi/phase4b/watch.sh` on the PC, not in git). Every 2 s it appends uptime,
-      temperature, clock and throttle flags to a log synced to disk, so the log survives a reset. It stops
-      `pi/benchmark.py` after 30 s of continuous under-voltage. `run_one.sh` and `suite3.sh` in the same folder
-      show how to use it.
+    - `pi/benchmark.py` stops by itself after 30 s of continuous under-voltage (`--stop-on-undervoltage`, see
+      above). Exit code 2 means the run was stopped.
+    - For a log that survives a reset, also run the Pi-side watcher (`runs/pi/phase4b/watch.sh` on the PC, not in
+      git). Every 2 s it appends uptime, temperature, clock and throttle flags to a file synced to disk.
+      `run_one.sh` and `suite3.sh` in the same folder show how to use it.
     - From the PC, compare the boot time (`uptime -s`) between polls to detect a reset.
 - **For phase 5 (`pi/app.py`):**
   - Default to **`--threads 2`**. The app also captures, draws and JPEG-encodes. If that keeps a third core busy,

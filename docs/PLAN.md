@@ -78,7 +78,7 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 |---|---|
 | **PC** | Windows 11, NVIDIA RTX 2080 Ti (11 GB, sm_75), driver 610.88. Python 3.12 venv in `.venv/` (torch 2.14.1+cu126, Ultralytics 8.4.171, ncnn 1.0.20260526, pnnx 20260526). |
 | **Pi** | Raspberry Pi 3 Model B Rev 1.2, Raspberry Pi OS Lite (Debian 13 "trixie", 64-bit, kernel 6.18), Python 3.13.5, 905 MiB RAM + 904 MiB swap. |
-| **Pi power / cooling** | Cooling upgraded 2026-10-03 (idle 39 °C, ~70 °C after 10 min at 2 threads, no thermal cap). Supply: USB-C charger 5 V 3.6 A 18 W through a USB-C → micro-USB adapter; under-voltage at ≥ 3 busy cores (phase 4). |
+| **Pi power / cooling** | Cooling upgraded 2026-10-03 (idle 39 °C, ~70 °C after 10 min at 2 threads, no thermal cap). Supply: USB-C charger 5 V 3.6 A 18 W through a USB-C → micro-USB adapter; under-voltage at ≥ 3 busy cores (phase 4). Kept for now (user decision, 2026-10-03), so ncnn runs with 2 threads. |
 | **Camera** | Camera Module v2.1 (Sony IMX219), detected by libcamera. Full field of view needs the 1640×1232 or 3280×2464 sensor mode; the 640×480 mode is a crop. |
 | **Network** | Pi at `192.168.2.112` on the local network (configured in `pi.env`). |
 
