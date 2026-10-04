@@ -27,7 +27,7 @@ YOLO model exported to NCNN.
 | 3 | [NCNN export and PC-side verification](phases/phase-3-export.md) | Done |
 | 4 | [Deploy to the Pi and baseline benchmark](phases/phase-4-deploy-benchmark.md) | Done |
 | 5 | [Live stream web app on the Pi](phases/phase-5-live-stream.md) | Done |
-| 6 | [Real camera data and retraining](phases/phase-6-real-data.md) | Not started |
+| 6 | [Real camera data and retraining](phases/phase-6-real-data.md) | In progress |
 | 7 | [Performance optimisation](phases/phase-7-performance.md) | Not started |
 | 8 | [People (future)](phases/phase-8-people.md) | Not started |
 
@@ -74,6 +74,11 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-03 | The live app runs the detector in a **child process** (`multiprocessing`, spawn) | ncnn's Python binding holds the GIL during inference (~210 ms on the Pi), which would freeze the capture and stream threads. Frames go to the child over a pipe (0.9 MB per frame, ~11 ms per detection). |
 | 2026-10-03 | The camera runs at `--stream-fps` (default 15): one rate for capture and stream | No frames are captured only to be dropped; the stream shows every captured frame. |
 | 2026-10-03 | On the current supply the **live app runs ncnn with 1 thread** (`--threads 1`, ~2.9 detections/s); the code default stays 2 | With 2 threads the app (capture + drawing + JPEG + HTTP) pushes the Pi to ~2.5–2.7 busy cores as soon as someone watches, and the supply goes into continuous under-voltage (600 MHz) even at a 10 fps stream. 1 thread keeps ~1.5 cores busy at full clock. User decision (2026-10-03); go back to 2 threads after a power fix. |
+| 2026-10-04 | **Captures for training are taken inside the live app** (`pi/app.py`): push button on GPIO 25, a Capture button on the page (`POST /capture`), optional timer | Only one process can open the camera. The app saves the 640×480 frame the detector sees (the frame of the latest finished detection, so image and pre-labels match) as JPEG quality 95 (user decision), with a JSON of the detections ≥ 0.25 as pre-labels and the camera's exposure/lux/colour temperature. No high-resolution still: a mode switch would stop the stream. |
+| 2026-10-04 | Push button: **internal pull-up, 50 ms debounce** (gpiozero + lgpio) | The button goes from GPIO 25 to GND with no resistor. Tested: no floating; the contacts bounce for < 0.5 ms on release, which the debounce removes. |
+| 2026-10-04 | Labelling in **Label Studio** (local on the PC) with model pre-labels; the export is converted to a **VIA-format** `data/pi-camera/captures/cats-annotations.json` (committed) | User choice. Pre-labels import as editable predictions, every image is explicitly submitted (so empty scenes are reviewed, not forgotten), and the VIA format keeps one annotation format in git that `tools/via_to_yolo.py` already reads. The export's user names/e-mails stay out of the repo. |
+| 2026-10-04 | **Pi-camera test set split by whole capture days**, decided by date before looking (plus one validation day) | Neighbouring frames are near-duplicates; splitting by day keeps them in one split. See the phase 6 collection plan. |
+| 2026-10-04 | Pi time zone **Europe/Madrid** (was Europe/London) | User decision: Pi logs and capture names match the PC's clock. |
 
 ## Environment
 
@@ -83,9 +88,11 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | **Pi** | Raspberry Pi 3 Model B Rev 1.2, Raspberry Pi OS Lite (Debian 13 "trixie", 64-bit, kernel 6.18), Python 3.13.5, 905 MiB RAM + 904 MiB swap. |
 | **Pi power / cooling** | Cooling upgraded 2026-10-03 (idle 39 °C, ~70 °C after 10 min at 2 threads, no thermal cap). Supply: USB-C charger 5 V 3.6 A 18 W through a USB-C → micro-USB adapter; under-voltage at ≥ 3 busy cores (phase 4), and at ~2.2 busy cores with the live app (phase 5). Kept for now (user decision, 2026-10-03), so the benchmark runs ncnn with 2 threads and the live app with 1. |
 | **Camera** | Camera Module v2.1 (Sony IMX219), detected by libcamera. Full field of view needs the 1640×1232 or 3280×2464 sensor mode; the 640×480 mode is a crop. |
+| **Push button** | Momentary button from **GPIO 25** (BCM numbering, physical pin 22) to **GND**, no external resistor; read with gpiozero 2.0.1 + lgpio 0.2.2 (apt) with the internal pull-up, 50 ms debounce. Input only. Takes a capture in `pi/app.py`. |
+| **Pi location / time** | Moved to another room on 2026-10-04 (after that, more under-voltage dips with the same load: check the power path there). Clock NTP-synchronised; time zone Europe/Madrid since 2026-10-04, like the PC. |
 | **Network** | Pi at `192.168.2.112` on the local network over **Wi-Fi** (2.4 GHz; Ethernet not connected), configured in `pi.env`. A 15 fps MJPEG stream is ~4.7 Mbit/s per viewer. |
 
-## Dataset (as of 2026-10-02)
+## Dataset (2020 photos, as of 2026-10-02)
 
 | Split | Blacky | Niche | Total | Notes |
 |---|---|---|---|---|
@@ -97,19 +104,24 @@ without cats; phase 6 adds those using the Pi camera. Two more limitations found
 are near-duplicates of training photos (validation scores will be inflated), and the cats are always large in the
 frame (box width ≥ 18% of the image), unlike what a fixed camera across a room will see.
 
+**Pi-camera captures (phase 6)**: 640×480 JPEGs from the Pi camera with model pre-labels, in `data/pi-camera/captures/`
+(images not in git). As of 2026-10-04: 19 hand-held test captures, none labelled yet. Target: ~500 labelled images
+(both cats, each alone near and far, empty scenes, three kinds of lighting) with a test set held out by capture day;
+see the [phase 6 collection plan](phases/phase-6-real-data.md#collection-plan).
+
 ## Repository layout
 
 ```
 cats-localization-v2/
-├── data/                 # images (not in git) + VIA annotation JSONs (in git)
+├── data/                 # images (not in git) + VIA annotation JSONs (in git); data/pi-camera/ = Pi captures (phase 6)
 ├── datasets/             # generated YOLO dataset (not in git)
 ├── docs/
 │   ├── PLAN.md           # this file
 │   ├── results.md        # metrics and benchmarks (created in phase 2)
 │   └── phases/           # one document per phase
 ├── pi/                   # code that runs on the Raspberry Pi
-├── scripts/              # PC-side helpers: Pi remote access, deploy
-├── tools/                # dataset conversion and visualisation
+├── scripts/              # PC-side helpers: Pi remote access, deploy, pull captures
+├── tools/                # dataset conversion, visualisation, Label Studio import/export
 ├── train/                # training, evaluation, export (PC)
 ├── pi.env.example        # template for the untracked pi.env
 ├── requirements-train.txt

@@ -10,6 +10,7 @@ Always uploads pi/ and requirements-pi.txt to the project folder on the Pi (PI_P
         models/<name>/        model.ncnn.param, model.ncnn.bin, model.json
         images/<set>/         test images (--images)
         results/              outputs of pi/benchmark.py and pi/detector.py --json (not touched)
+        captures/             training images saved by pi/app.py (not touched; scripts/pull_captures.py downloads them)
 
     python scripts/deploy.py                                            # code only
     python scripts/deploy.py yolo26n_320_scale0.9 yolo26n_416           # code + models (run names in runs/train/)

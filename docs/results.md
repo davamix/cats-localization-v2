@@ -2,6 +2,57 @@
 
 Metrics and benchmarks for the cats detector. Newest phase at the top of each section.
 
+## Phase 6 — real camera data (2026-10-04)
+
+Capture tooling only so far; no retraining yet. Same Pi, model and supply as phase 5, but the Pi was moved to
+another room that morning.
+
+### Push button (GPIO 25 to GND, internal pull-up, gpiozero 2.0.1 + lgpio)
+
+[pi/button_test.py](../pi/button_test.py) logs every edge with the kernel's event timestamp. The user left the button
+alone for the first 15–30 s, then pressed it 5 times slowly and 3 times quickly.
+
+| Debounce | Edges untouched | Edges / presses | Button events | Shortest gap between edges | Press length |
+|---|---|---|---|---|---|
+| 0 (raw) | 0 in 30 s | 21 / 8 | 8 pressed, 8 released | **0.11 ms** (5 gaps < 20 ms) | 171–381 ms |
+| **50 ms** | 0 in 15 s | **16 / 8** | 8 pressed, 8 released | 127 ms | 127–237 ms |
+
+- The pin does not float with the internal pull-up (idle level high, no edge while untouched).
+- The contacts bounce on **release**: 3 of 8 releases gave 2–3 edges within 0.1–0.4 ms. gpiozero's state machine
+  ignored the repeated levels here, but a high-low-high bounce would count as an extra press. With lgpio's 50 ms
+  debounce every press is exactly one falling and one rising edge. The app uses 50 ms, plus at most one capture
+  per second.
+- With nothing holding the pin, it read high, low, high in three reads 1 s apart: the pull-up apparently doesn't
+  stay on after the pin is released. Irrelevant while the app runs.
+
+### Captures in the live app (`--threads 1 --capture-every 1`, 1 viewer, 8.6 min)
+
+| | |
+|---|---|
+| Captures | 19 saved: button 10, web 2, timer 7; 2 refused as too soon (a second press < 1 s after the first, and a timer tick in the same second as a press) |
+| JPEG quality 95, 640×480 | 29–107 KB (median 60 KB) + ~1 KB JSON each |
+| Frame age at save (frame of the latest finished detection) | 362–736 ms |
+| Camera metadata seen | Lux 8–1266, exposure 13–67 ms, analogue gain 2.0–8.8, colour temperature 3220–4567 K |
+| Detection | 2.1–2.9 per second (inference 331–454 ms; the slow minutes are the 600 MHz dips) |
+| Memory | RSS app 181–182 + detector 181 MiB (phase 5: 176 + 181), ~585 MiB available |
+| Stop | SIGTERM → clean stop in 1 s, exit code 0, GPIO 25 released |
+| Download (`scripts/pull_captures.py`) | 36 files (1.1 MB) copied; a second run copied 0; a third, after one more timer capture, copied only its 2 files |
+
+**Power after the move.** The Pi now sits in another room. With the same load as the clean phase 5 soak
+(`--threads 1`, 15 fps stream to 1 viewer), the supply sagged repeatedly: after 5 clean minutes, **14 dips of
+4–16 s in the last 4 minutes** (one every 15–30 s, 600 MHz during each; 40 of 239 samples with under-voltage). The
+phase 5 soak had 2 dips of 6 s in 35 min. There was never 30 s of
+continuous under-voltage, so the app did not stop, and there was no reset. The temperature (53–60 °C) and the
+load did not change, so the cause is probably the power path in the new place.
+
+### First look at the model on Pi-camera captures (19 hand-held images, pre-labels ≥ 0.25)
+
+- **Missed**: Niche standing by a door (~70 px wide), lying far away on the floor, and in the cat-tree hammock got no
+  box at all, not even at 0.25.
+- **False positives**: the black leather sofa seat next to Blacky got a second box, "Blacky 0.66"; a close-up of a
+  beige blanket got "Blacky 0.60" covering the whole frame. Both are above the app's 0.5 and show on the stream.
+- **Found**: Blacky in the cat bed on the sofa (0.98; 0.62 a second later from another angle).
+
 ## Phase 5 — live stream web app on the Pi (2026-10-03)
 
 [pi/app.py](../pi/app.py) on the Pi 3B: same software and model as phase 4 (`yolo26n_320_scale0.9`, FP32, confidence

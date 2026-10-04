@@ -92,7 +92,8 @@ reset. It then prints a summary that includes the memory trend in MiB/h. `--summ
 - **Run the app** (on the Pi, from `~/cats-localization-v2`, with the current supply):
   - Interactive: `.venv/bin/python pi/app.py --threads 1`. Ctrl+C stops it.
   - Detached: `(setsid nohup .venv/bin/python pi/app.py --threads 1 > results/app.log 2>&1 < /dev/null &)`.
-    Stop it with `pkill -TERM -f pi/app.py`.
+    Stop it with `pkill -TERM -f "[p]i/app.py"`. (Corrected 2026-10-04: through `pi_remote.py run`, a plain
+    `pkill -f pi/app.py` also matches the remote shell's own command line and kills it.)
   - Then open `http://192.168.2.112:8000/`. The app logs a status line every minute.
   - It takes ~13 s to start: spawning Python and loading ncnn and the model in the child.
 - **Only one process can open the camera.** While the app runs, `pi/camera_test.py`, `pi/benchmark.py --camera` or a
@@ -121,7 +122,9 @@ reset. It then prints a summary that includes the memory trend in MiB/h. `--summ
   - Watch the app with `curl http://192.168.2.112:8000/stats` from the PC rather than repeated SSH logins: every
     SSH login costs the Pi CPU, which matters near the power limit.
   - All phase 5 logs: `results/phase5/` on the Pi, copied to `runs/pi/phase5/pi/`.
-  - The Pi's clock is one hour behind the PC's, so its logs are in Pi time.
+  - Pi log times: the Pi's clock was correct and NTP-synchronised, but its time zone was Europe/London (UTC+1) while
+    the PC is on UTC+2, so the phase 4/5 logs read one hour behind the PC. (Corrected 2026-10-04; since then the Pi is
+    on Europe/Madrid, like the PC.)
 - **Memory**:
   - app ~176 MiB, detector ~181 MiB, multiprocessing's resource tracker ~11 MiB, ~575 MiB still available.
   - Both Python processes import OpenCV, numpy and ncnn: spawn re-runs `app.py`'s imports in the child, and the

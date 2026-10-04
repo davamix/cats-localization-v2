@@ -1,7 +1,8 @@
 """Convert the VIA 2.0.8 polygon annotations in data/ into an Ultralytics YOLO dataset.
 
 Input (see data/README.md):
-    data/<split>/cats-annotations.json      VIA project export, polygon regions with region_attributes.Class
+    data/<split>/cats-annotations.json      VIA project export, polygon regions with region_attributes.Class (rect
+                                            regions work too: the Pi-camera boxes from tools/labelstudio_to_via.py)
     data/<split>/<Class>/<filename>         images
 
 Output (rebuilt from scratch on every run):
@@ -50,13 +51,17 @@ def find_image(split_dir: Path, filename: str, size: int) -> Path:
 
 
 def polygon_points(region: dict, width: int, height: int) -> list[tuple[float, float]]:
+    """Points of a VIA region: a polygon (2020 annotations) or a rect, as its 4 corners (Pi-camera boxes from
+    tools/labelstudio_to_via.py)."""
     shape = region["shape_attributes"]
-    if shape["name"] != "polygon":
+    if shape["name"] == "polygon":
+        points = zip(shape["all_points_x"], shape["all_points_y"])
+    elif shape["name"] == "rect":
+        x, y, w, h = shape["x"], shape["y"], shape["width"], shape["height"]
+        points = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+    else:
         raise ValueError(f"unsupported VIA shape: {shape['name']}")
-    return [
-        (min(max(x, 0), width), min(max(y, 0), height))
-        for x, y in zip(shape["all_points_x"], shape["all_points_y"])
-    ]
+    return [(min(max(x, 0), width), min(max(y, 0), height)) for x, y in points]
 
 
 def label_line(class_id: int, points: list[tuple[float, float]], width: int, height: int, task: str) -> str:

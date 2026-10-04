@@ -1,13 +1,24 @@
-"""Live stream web app for the Raspberry Pi: camera + cat detector, watched in the browser.
+"""Live stream web app for the Raspberry Pi: camera + cat detector, watched in the browser, plus captures for training.
 
     python pi/app.py --model models/yolo26n_320_scale0.9
 
 then open http://<pi-ip>:8000/ :
-    /              page with the live stream and stats
-    /stream.mjpg   MJPEG stream (multipart/x-mixed-replace) with the boxes, labels, scores and FPS drawn
-    /snapshot.jpg  one annotated frame
-    /stats         JSON: capture / detection / stream FPS, stage times, the current detections, CPU temperature, ARM
-                   clock, `vcgencmd get_throttled` flags and memory
+    /                   page with the live stream, stats and a Capture button
+    /stream.mjpg        MJPEG stream (multipart/x-mixed-replace) with the boxes, labels, scores and FPS drawn
+    /snapshot.jpg       one annotated frame
+    /stats              JSON: capture / detection / stream FPS, stage times, the current detections, CPU temperature,
+                        ARM clock, `vcgencmd get_throttled` flags, memory and the captures
+    POST /capture       save a capture (see below); answers with JSON
+    /captures/last.jpg  the last saved capture
+
+Captures (training images, phase 6): a press of the push button on --button-pin (BCM numbering, button to GND with the
+internal pull-up by default), POST /capture, or a timer (--capture-every minutes) saves the raw camera frame (no boxes)
+as a JPEG (--capture-quality) under --captures/<YYYY-MM-DD>/<YYYYMMDD-HHMMSS-mmm>_<source>.jpg, with a JSON file of the
+same name: time, source, camera metadata (exposure, gain, lux, colour temperature), the model and its detections with
+a score >= --prelabel-conf as pre-labels. The saved frame is the one the latest finished detection ran on, so image and
+pre-labels match even when a cat moves (it is up to ~0.5 s older than the live picture). At most one capture per
+--capture-min-interval seconds; none when the captures use more than --capture-max-mb or the SD card has less than
+--capture-min-free-mb free.
 
 How it works (a slow detector must not freeze the video):
   - capture thread: picamera2 with the full-field-of-view sensor mode (1640x1232) scaled by the ISP to
@@ -21,22 +32,27 @@ How it works (a slow detector must not freeze the video):
   - monitor thread: every 2 s reads the CPU temperature, ARM clock, throttle flags and memory. Sustained
     under-voltage caps the CPU at 600 MHz and can end in a brownout reset (phase 4), so after
     --stop-on-undervoltage seconds of it (default 30, 0 = never) the app stops with exit code 2.
+  - save thread: takes capture requests from a queue (the button callback, which runs in gpiozero's thread, only
+    queues one) and the timer, checks the limits and writes the files.
   - HTTP: the standard library's ThreadingHTTPServer.
 
-Ctrl+C or SIGTERM shuts down cleanly. Exit code: 0 after a normal stop, 1 when a part fails, 2 after sustained
-under-voltage. Needs ncnn, numpy, OpenCV and picamera2 (no torch).
+Ctrl+C or SIGTERM shuts down cleanly and releases the GPIO pin. Exit code: 0 after a normal stop, 1 when a part fails,
+2 after sustained under-voltage. Needs ncnn, numpy, OpenCV, picamera2 and gpiozero + lgpio for the button (no torch).
 """
 import argparse
 import json
 import multiprocessing
 import os
+import queue
+import shutil
 import signal
 import socket
 import threading
 import time
 import traceback
-from collections import deque
+from collections import Counter, deque
 from contextlib import contextmanager
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -56,6 +72,11 @@ BOUNDARY = b"frame"
 COLORS = [(0, 190, 255), (255, 190, 0), (80, 220, 80), (200, 80, 255)]  # box colour per class id (BGR)
 WARNING_COLOR = (60, 60, 255)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
+# camera metadata saved with each capture (to sort the images by lighting)
+CAMERA_KEYS = ("ExposureTime", "AnalogueGain", "DigitalGain", "Lux", "ColourTemperature", "ColourGains")
+CAPTURE_WAIT_S = 5  # longest POST /capture waits for the save thread
+# capture result status -> HTTP status of POST /capture
+CAPTURE_HTTP = {"saved": 201, "too_soon": 429, "not_ready": 503, "disk_limit": 507, "stopping": 503, "timeout": 504}
 
 
 def log(message: str):
@@ -123,6 +144,41 @@ class Window:
         return {key: round(value, 1) for key, value in self.events[-1][1].items()} if self.events else {}
 
 
+class CaptureRequest:
+    """One request to save a capture; the save thread sets `result` (a dict with "status") and `done`."""
+
+    def __init__(self, source: str):
+        self.source, self.result, self.done = source, None, threading.Event()
+
+    def finish(self, result: dict):
+        self.result = result
+        self.done.set()
+
+
+def folder_usage(folder: Path) -> tuple[int, int, Path | None]:
+    """Captures already on disk -> (number of images, bytes of all files, newest image or None)."""
+    images, size, newest = 0, 0, None
+    for root, _, files in os.walk(folder):
+        for name in files:
+            path = Path(root) / name
+            size += path.stat().st_size
+            if path.suffix == ".jpg":
+                images += 1
+                newest = path if newest is None or path.name > newest.name else newest  # names sort by time
+    return images, size, newest
+
+
+def write_file(path: Path, data: bytes):
+    """Write via a hidden temporary file + rename, synced to disk: no half-written capture after a reset, and
+    scripts/pull_captures.py never copies a file that is still being written."""
+    temp = path.with_name(f".{path.name}.part")
+    with open(temp, "wb") as file:
+        file.write(data)
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(temp, path)
+
+
 class App:
     def __init__(self, args):
         self.args = args
@@ -132,13 +188,25 @@ class App:
         self.start_time = time.perf_counter()
         self.config = {}
         self.names = []
-        # latest camera frame (never modified: the render thread draws on a copy)
-        self.frame, self.frame_id, self.frame_time = None, 0, 0.0
+        # latest camera frame (never modified: the render thread draws on a copy) and its camera metadata
+        self.frame, self.frame_id, self.frame_time, self.frame_metadata = None, 0, 0.0, {}
         self.captured = Window()
-        # latest detections
+        # latest detections with a score >= --conf (drawn and in /stats)
         self.detections = np.zeros((0, 6), np.float32)
         self.detected_time, self.detected_count = None, 0
         self.detected = Window()
+        # the frame of the latest finished detection with all its detections >= the detector's threshold (captures)
+        self.detected_frame = None  # (frame, frame_time, metadata, detections)
+        # captures
+        self.capture_requests = queue.Queue()
+        self.capture_dir = Path(args.captures)
+        self.capture_count, self.last_capture_time = 0, None
+        self.capture_sources, self.capture_rejected = Counter(), Counter()
+        self.capture_files, self.capture_bytes, self.last_capture_path = 0, 0, None
+        self.last_capture = None  # summary of the last capture for /stats
+        self.next_timed = None  # perf_counter time of the next timed capture
+        self.disk_free = None  # bytes free on the captures' file system
+        self.button, self.button_state = None, "off"
         # latest annotated JPEG for the stream
         self.jpeg, self.jpeg_id, self.viewers = None, 0, 0
         self.rendered = Window()
@@ -158,12 +226,14 @@ class App:
         self.server.app = self
         self.start_detector()
         self.start_camera()
+        self.start_captures()
         self.config = {"model": Path(args.model).name, "imgsz": self.imgsz, "threads": args.threads, "conf": args.conf,
-                       "frame": [args.width, args.height], "sensor": list(SENSOR_SIZE),
-                       "stream_fps": args.stream_fps, "jpeg_quality": args.jpeg_quality,
+                       "prelabel_conf": args.prelabel_conf, "frame": [args.width, args.height],
+                       "sensor": list(SENSOR_SIZE), "stream_fps": args.stream_fps, "jpeg_quality": args.jpeg_quality,
                        "stop_on_undervoltage_s": args.stop_on_undervoltage}
-        for loop in (self.capture_loop, self.detection_loop, self.render_loop, self.monitor_loop):
+        for loop in (self.capture_loop, self.detection_loop, self.render_loop, self.monitor_loop, self.save_loop):
             self.threads.append(self.start_thread(loop))
+        self.start_button()  # last: a press only queues a request, which the save thread handles
         self.server_thread = threading.Thread(target=self.server.serve_forever, args=(WAIT_S,), name="http",
                                               daemon=True)
         self.server_thread.start()
@@ -173,8 +243,11 @@ class App:
         args = self.args
         context = multiprocessing.get_context("spawn")  # a fresh interpreter: no camera or threads inherited
         self.conn, child_conn = context.Pipe()
+        # The detector keeps everything above the lower of the two thresholds; the app filters at --conf for the
+        # stream. Boxes >= --conf are the same either way: NMS only removes a box for one with a higher score.
         self.process = context.Process(target=detector_process, name="detector", daemon=True,
-                                       args=(child_conn, args.model, args.conf, args.threads))
+                                       args=(child_conn, args.model, min(args.conf, args.prelabel_conf),
+                                             args.threads))
         self.process.start()
         child_conn.close()  # keep only the child's copy, so a dead child shows up as EOFError
         try:
@@ -185,7 +258,8 @@ class App:
             raise RuntimeError("the detector process did not start (see its error above)") from None
         self.names, self.imgsz = info["names"], info["imgsz"]
         log(f"detector: {args.model} ({self.imgsz[1]}x{self.imgsz[0]}), {args.threads} threads, FP32, "
-            f"conf {args.conf}, classes {', '.join(self.names)} (pid {self.process.pid})")
+            f"conf {args.conf} (pre-labels {args.prelabel_conf}), classes {', '.join(self.names)} "
+            f"(pid {self.process.pid})")
 
     def start_camera(self):
         from picamera2 import Picamera2  # imported here so the detector process does not load it
@@ -202,6 +276,48 @@ class App:
         self.picam2.start()
         sensor = self.picam2.camera_configuration()["sensor"]
         log(f"camera: {args.width}x{args.height} RGB888 at {args.stream_fps} fps, sensor mode {sensor}")
+
+    def start_captures(self):
+        args = self.args
+        self.capture_dir.mkdir(parents=True, exist_ok=True)
+        self.capture_files, self.capture_bytes, self.last_capture_path = folder_usage(self.capture_dir)
+        if self.last_capture_path:  # show the newest capture from an earlier run until the first new one
+            try:
+                info = json.loads(self.last_capture_path.with_suffix(".json").read_text(encoding="utf-8"))
+                self.last_capture = self.capture_summary(self.last_capture_path, info)
+            except (OSError, ValueError, KeyError):
+                pass
+        self.disk_free = shutil.disk_usage(self.capture_dir).free
+        if args.capture_every:
+            self.next_timed = time.perf_counter() + args.capture_every * 60
+        log(f"captures: {self.capture_dir.resolve()} ({self.capture_files} images, {self.capture_bytes / 1e6:.1f} MB; "
+            f"{self.disk_free / 1e6:.0f} MB free), JPEG quality {args.capture_quality}, pre-labels >= "
+            f"{args.prelabel_conf}, at most one per {args.capture_min_interval:g} s, timed "
+            f"{f'every {args.capture_every:g} min' if args.capture_every else 'off'}; limits {args.capture_max_mb:g} MB "
+            f"of captures, {args.capture_min_free_mb:g} MB free")
+
+    def start_button(self):
+        args = self.args
+        if not args.button_pin:
+            return
+        try:
+            from gpiozero import Button, Device  # imported here so the detector process does not load it
+
+            self.button = Button(args.button_pin, pull_up=args.button_pull == "up",
+                                 bounce_time=args.button_bounce_ms / 1000 or None)
+            self.button.when_pressed = self.on_button
+            factory = type(Device.pin_factory).__name__
+        except Exception as error:  # no GPIO (e.g. pin busy, or not a Pi): run without the button
+            self.button, self.button_state = None, f"unavailable: {error}"
+            log(f"button: GPIO {args.button_pin} {self.button_state}; captures only from the page and the timer")
+            return
+        self.button_state = (f"GPIO {args.button_pin}, pull-{args.button_pull}, debounce {args.button_bounce_ms:g} ms "
+                             f"({factory})")
+        log(f"button: {self.button_state}")
+
+    def on_button(self):
+        """gpiozero calls this in its own thread on every press: only queue a request."""
+        self.capture_requests.put(CaptureRequest("button"))
 
     def start_thread(self, loop) -> threading.Thread:
         def run():
@@ -225,6 +341,8 @@ class App:
     def shutdown(self):
         self.stopping.set()
         log(f"stopping: {self.stop_reason or 'startup failed'}")
+        if self.button:
+            self.button.close()  # no more presses; releases the pin (it stays an input)
         with self.cond:
             self.cond.notify_all()
         if self.server_thread:
@@ -252,10 +370,15 @@ class App:
 
     def capture_loop(self):
         while not self.stopping.is_set():
-            frame = self.picam2.capture_array("main")  # a new array per frame, BGR in memory
+            request = self.picam2.capture_request()  # what capture_array() does, plus the metadata
+            try:
+                frame = request.make_array("main")  # a new array per frame, BGR in memory
+                metadata = request.get_metadata()
+            finally:
+                request.release()
             now = time.perf_counter()
             with self.cond:
-                self.frame, self.frame_time = frame, now
+                self.frame, self.frame_time, self.frame_metadata = frame, now, metadata
                 self.frame_id += 1
                 self.captured.add(now)
                 self.cond.notify_all()
@@ -271,13 +394,14 @@ class App:
             with self.cond:
                 if not self.wait_for(lambda: self.frame_id > last_id):
                     continue
-                frame, last_id, frame_time = self.frame, self.frame_id, self.frame_time
+                frame, last_id, frame_time, metadata = self.frame, self.frame_id, self.frame_time, self.frame_metadata
             sent = time.perf_counter()
             self.conn.send(frame)
             detections, stage_ms = self.conn.recv()
             now = time.perf_counter()
             with self.cond:
-                self.detections, self.detected_time = detections, now
+                self.detections, self.detected_time = detections[detections[:, 4] >= self.args.conf], now
+                self.detected_frame = (frame, frame_time, metadata, detections)
                 self.detected_count += 1
                 self.detected.add(now, {**stage_ms, "roundtrip": (now - sent) * 1000,
                                         "latency": (now - frame_time) * 1000})
@@ -307,10 +431,11 @@ class App:
             memory = {"app": proc_kib("/proc/self/status", "VmRSS", "VmHWM"),
                       "detector": proc_kib(detector_status, "VmRSS", "VmHWM"),
                       **proc_kib("/proc/meminfo", "MemAvailable")}
+            disk_free = shutil.disk_usage(self.capture_dir).free
             now = time.perf_counter()
             undervoltage = undervoltage_now(state["raw"])
             with self.cond:
-                self.system, self.memory = system, memory
+                self.system, self.memory, self.disk_free = system, memory, disk_free
                 self.samples += 1
                 self.undervoltage_samples += undervoltage
                 self.capped_samples += "ARM frequency capped" in state["now"]
@@ -329,6 +454,106 @@ class App:
                 next_log += LOG_EVERY_S
             if self.stopping.wait(MONITOR_S):
                 return
+
+    def save_loop(self):
+        while not self.stopping.is_set():
+            timeout = WAIT_S if self.next_timed is None else min(WAIT_S, max(self.next_timed - time.perf_counter(), 0))
+            try:
+                request = self.capture_requests.get(timeout=timeout)
+            except queue.Empty:
+                if self.next_timed is None or time.perf_counter() < self.next_timed:
+                    continue
+                self.next_timed = time.perf_counter() + self.args.capture_every * 60
+                request = CaptureRequest("timer")
+            request.finish(self.save_capture(request.source))
+        while True:  # answer requests that came in while stopping, so no web request waits for nothing
+            try:
+                self.capture_requests.get_nowait().finish({"status": "stopping", "message": "the app is stopping"})
+            except queue.Empty:
+                return
+
+    def capture_blocked(self) -> str | None:
+        """Under self.cond: why captures are paused (disk limits), or None."""
+        args = self.args
+        if self.capture_bytes > args.capture_max_mb * 1e6:
+            return f"captures use {self.capture_bytes / 1e6:.1f} MB (limit {args.capture_max_mb:g} MB)"
+        if self.disk_free is not None and self.disk_free < args.capture_min_free_mb * 1e6:
+            return f"only {self.disk_free / 1e6:.0f} MB free on the SD card (limit {args.capture_min_free_mb:g} MB)"
+        return None
+
+    def save_capture(self, source: str) -> dict:
+        """Save the frame of the latest detection with its detections as pre-labels -> result for the requester."""
+        args = self.args
+        now = time.perf_counter()
+        with self.cond:
+            self.capture_sources[source] += 1
+            self.disk_free = shutil.disk_usage(self.capture_dir).free  # fresh: a capture must not fill the card
+            blocked = self.capture_blocked()
+            if self.last_capture_time is not None and now - self.last_capture_time < args.capture_min_interval:
+                status, message = "too_soon", f"at most one capture per {args.capture_min_interval:g} s"
+            elif blocked:
+                status, message = "disk_limit", f"captures paused: {blocked}"
+            elif self.detected_frame is None:
+                status, message = "not_ready", "no detection yet"
+            else:
+                status, message = "saved", None
+                frame, frame_time, metadata, detections = self.detected_frame
+                self.last_capture_time = now
+            if status != "saved":
+                self.capture_rejected[status] += 1
+        if status != "saved":
+            log(f"capture ({source}) rejected: {message}")
+            return {"status": status, "message": message}
+
+        taken = datetime.fromtimestamp(time.time() - (now - frame_time)).astimezone()  # when the frame was captured
+        stem = f"{taken:%Y%m%d-%H%M%S}-{taken.microsecond // 1000:03d}_{source}"
+        folder = self.capture_dir / f"{taken:%Y-%m-%d}"
+        folder.mkdir(exist_ok=True)
+        ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, args.capture_quality])
+        if not ok:
+            raise RuntimeError("JPEG encoding failed")
+        prelabels = [{"class": self.names[int(class_id)], "class_id": int(class_id), "score": round(float(score), 3),
+                      "box": [round(float(v), 1) for v in (x1, y1, x2, y2)]}
+                     for x1, y1, x2, y2, score, class_id in detections if score >= args.prelabel_conf]
+        info = {
+            "image": f"{stem}.jpg",
+            "time": taken.isoformat(timespec="milliseconds"),
+            "source": source,
+            "width": frame.shape[1], "height": frame.shape[0],
+            "frame_age_ms": round((now - frame_time) * 1000),  # frame captured -> capture requested
+            "camera": {key: metadata[key] for key in CAMERA_KEYS if key in metadata},
+            "model": {"name": Path(args.model).name, "imgsz": self.imgsz, "threads": args.threads,
+                      "conf": args.conf, "prelabel_conf": args.prelabel_conf},
+            "detections": prelabels,
+        }
+        image_path = folder / f"{stem}.jpg"
+        write_file(image_path, jpeg.tobytes())
+        sidecar = (json.dumps(info, indent=1) + "\n").encode()
+        write_file(image_path.with_suffix(".json"), sidecar)
+
+        summary = self.capture_summary(image_path, info)
+        relative = summary["file"]
+        with self.cond:
+            self.capture_count += 1
+            self.capture_files += 1
+            self.capture_bytes += len(jpeg) + len(sidecar)
+            self.last_capture_path, self.last_capture = image_path, summary
+        found = ", ".join(f"{d['class']} {d['score']:.2f}" for d in prelabels) or "no cats"
+        log(f"capture ({source}): {relative} ({len(jpeg) / 1024:.0f} KB, frame {info['frame_age_ms']} ms old; {found})")
+        return {"status": "saved", **summary}
+
+    def capture_summary(self, image_path: Path, info: dict) -> dict:
+        """A capture as shown in /stats: file (relative to the captures folder), time, source, pre-labels."""
+        return {"file": image_path.relative_to(self.capture_dir).as_posix(), "time": info["time"],
+                "source": info["source"], "detections": info["detections"]}
+
+    def request_capture(self, source: str) -> dict:
+        """For the HTTP handler: queue a request and wait for the save thread's answer."""
+        request = CaptureRequest(source)
+        self.capture_requests.put(request)
+        if not request.done.wait(CAPTURE_WAIT_S):
+            return {"status": "timeout", "message": f"no answer from the save thread in {CAPTURE_WAIT_S} s"}
+        return request.result
 
     # --- drawing ---
 
@@ -422,8 +647,27 @@ class App:
                            "undervoltage_samples": self.undervoltage_samples, "capped_samples": self.capped_samples,
                            "samples": self.samples, "sample_every_s": MONITOR_S},
                 "memory": self.memory,
+                "captures": {
+                    "saved": self.capture_count,  # this run
+                    "requests": dict(self.capture_sources), "rejected": dict(self.capture_rejected),
+                    "last": self.last_capture,
+                    "files": self.capture_files, "mb": round(self.capture_bytes / 1e6, 1),  # on disk, all runs
+                    "free_mb": round(self.disk_free / 1e6) if self.disk_free is not None else None,
+                    "paused": self.capture_blocked(),
+                    "button": self.button_state,
+                    "every_min": self.args.capture_every,
+                    "next_timed_in_s": round(self.next_timed - now) if self.next_timed is not None else None,
+                },
                 "pids": {"app": os.getpid(), "detector": self.process.pid},
             }
+
+    def last_capture_jpeg(self) -> bytes | None:
+        with self.cond:
+            path = self.last_capture_path
+        try:
+            return path.read_bytes() if path else None
+        except OSError:  # deleted by hand
+            return None
 
     def status_line(self) -> str:
         s = self.stats()
@@ -434,7 +678,7 @@ class App:
                 f"{s['stream']['viewers']} viewer(s); {fmt(system.get('temp_c'), '.1f')} °C, "
                 f"{fmt(system.get('arm_mhz'))} MHz, throttled {system['throttled']['raw']}; RSS app "
                 f"{fmt(memory['app']['VmRSS'])} + detector {fmt(memory['detector']['VmRSS'])} MiB, "
-                f"available {fmt(memory['MemAvailable'])} MiB")
+                f"available {fmt(memory['MemAvailable'])} MiB; captures {s['captures']['saved']}")
 
 
 # --- HTTP ------------------------------------------------------------------------------------------------------------
@@ -454,6 +698,11 @@ PAGE = """<!doctype html>
   td { padding: 2px 12px 2px 0; vertical-align: top; }
   td:first-child { color: #9aa0a8; }
   .warn { color: #ff6b6b; font-weight: bold; }
+  h2 { margin: 16px 0 8px; font-size: 16px; }
+  button { font: inherit; padding: 6px 18px; border: 0; border-radius: 4px; background: #3d7be0; color: #fff;
+           cursor: pointer; }
+  button:disabled { background: #555; cursor: wait; }
+  #last { display: block; width: 320px; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -462,11 +711,49 @@ PAGE = """<!doctype html>
   <section>
     <h1>Cats live</h1>
     <table id="stats"><tr><td>Loading…</td></tr></table>
+    <h2>Captures</h2>
+    <p><button id="capture" type="button">Capture</button> <span id="capture-msg"></span></p>
+    <table id="captures"></table>
+    <img id="last" alt="last capture" hidden>
   </section>
 </main>
 <script>
 const f = (v, d = 0) => v == null ? "n/a" : Number(v).toFixed(d);
 const esc = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+const table = rows => rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+const cats = dets => dets.map(x => `${esc(x.class)} ${f(x.score, 2)}`).join(", ") || "no cats";
+let lastFile = null;
+function showCaptures(c) {
+  const rows = [
+    ["Saved", `${c.saved} this run; ${c.files} on the Pi (${f(c.mb, 1)} MB), ${f(c.free_mb)} MB free` +
+              (c.paused ? `<br><span class="warn">paused: ${esc(c.paused)}</span>` : "")],
+    ["Last", c.last ? `${c.last.time.slice(11, 19)} ${esc(c.last.source)}: ${cats(c.last.detections)}` : "none"],
+    ["Rejected", Object.entries(c.rejected).map(([k, n]) => `${esc(k)} ${n}`).join(", ") || "none"],
+    ["Button", esc(c.button)],
+    ["Timer", c.every_min ? `every ${c.every_min} min, next in ${f(c.next_timed_in_s / 60, 1)} min` : "off"],
+  ];
+  document.getElementById("captures").innerHTML = table(rows);
+  const file = c.last ? c.last.file : null;
+  if (file !== lastFile) {
+    lastFile = file;
+    const img = document.getElementById("last");
+    img.hidden = !file;
+    if (file) img.src = "/captures/last.jpg?f=" + encodeURIComponent(file);
+  }
+}
+document.getElementById("capture").onclick = async e => {
+  const msg = document.getElementById("capture-msg");
+  e.target.disabled = true;
+  try {
+    const r = await (await fetch("/capture", {method: "POST"})).json();
+    msg.innerHTML = r.status === "saved" ? `saved ${esc(r.file.split("/").pop())} (${cats(r.detections)})`
+                                         : `<span class="warn">${esc(r.message || r.status)}</span>`;
+  } catch (err) {
+    msg.innerHTML = '<span class="warn">no answer from the Pi</span>';
+  }
+  e.target.disabled = false;
+  refresh();
+};
 async function refresh() {
   let rows;
   try {
@@ -487,10 +774,11 @@ async function refresh() {
       ["Model", `${esc(s.config.model)}, ${s.config.threads} threads, conf ${s.config.conf}`],
       ["Uptime", `${f(s.uptime_s / 60, 1)} min`],
     ];
+    showCaptures(s.captures);
   } catch (e) {
     rows = [["Stats", '<span class="warn">no answer from the Pi</span>']];
   }
-  document.getElementById("stats").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  document.getElementById("stats").innerHTML = table(rows);
 }
 refresh();
 setInterval(refresh, 1000);
@@ -519,13 +807,32 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_body(jpeg, "image/jpeg")
             elif path == "/stream.mjpg":
                 self.stream(app)
+            elif path == "/captures/last.jpg":
+                jpeg = app.last_capture_jpeg()
+                if jpeg is None:
+                    self.send_error(404, "no capture yet")
+                else:
+                    self.send_body(jpeg, "image/jpeg")
+            elif path == "/favicon.ico":
+                self.send_body(b"", "image/x-icon", 204)  # browsers ask for it; no 404 line in the log
             else:
                 self.send_error(404)
         except (ConnectionError, TimeoutError):
             pass  # the client went away (e.g. a closed tab, or one that connected before the server was serving)
 
-    def send_body(self, body: bytes, content_type: str):
-        self.send_response(200)
+    def do_POST(self):
+        app = self.server.app
+        try:
+            if self.path.split("?", 1)[0] == "/capture":
+                result = app.request_capture("web")
+                self.send_body(json.dumps(result).encode(), "application/json", CAPTURE_HTTP[result["status"]])
+            else:
+                self.send_error(404)
+        except (ConnectionError, TimeoutError):
+            pass
+
+    def send_body(self, body: bytes, content_type: str, status: int = 200):
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -572,11 +879,29 @@ def main():
     parser.add_argument("--jpeg-quality", type=int, default=80, help="JPEG quality of the stream (1-100)")
     parser.add_argument("--stop-on-undervoltage", type=float, default=30, metavar="S",
                         help="stop (exit code 2) after S seconds of continuous under-voltage; 0 = never")
+    captures = parser.add_argument_group("captures (training images)")
+    captures.add_argument("--captures", default="captures", help="folder for the captures")
+    captures.add_argument("--capture-quality", type=int, default=95, help="JPEG quality of the captures (1-100)")
+    captures.add_argument("--prelabel-conf", type=float, default=0.25,
+                          help="minimum score of the detections saved with a capture as pre-labels")
+    captures.add_argument("--capture-min-interval", type=float, default=1, metavar="S",
+                          help="at most one capture per S seconds (any source)")
+    captures.add_argument("--capture-every", type=float, default=0, metavar="MIN",
+                          help="timed capture every MIN minutes; 0 = off")
+    captures.add_argument("--capture-max-mb", type=float, default=1000,
+                          help="no more captures once the captures folder holds this many MB")
+    captures.add_argument("--capture-min-free-mb", type=float, default=500,
+                          help="no more captures when the SD card has less than this many MB free")
+    captures.add_argument("--button-pin", type=int, default=25,
+                          help="GPIO (BCM numbering) of the capture button; 0 = no button")
+    captures.add_argument("--button-pull", choices=["up", "down"], default="up",
+                          help="internal pull: up for a button to GND (the wiring on our Pi), down for one to 3.3 V")
+    captures.add_argument("--button-bounce-ms", type=float, default=50, help="button debounce time in ms; 0 = off")
     args = parser.parse_args()
     if not 1 <= args.stream_fps <= 40:
         parser.error("--stream-fps must be between 1 and 40 (the 1640x1232 sensor mode tops out at ~41 fps)")
-    if not 1 <= args.jpeg_quality <= 100:
-        parser.error("--jpeg-quality must be between 1 and 100")
+    if not 1 <= args.jpeg_quality <= 100 or not 1 <= args.capture_quality <= 100:
+        parser.error("--jpeg-quality and --capture-quality must be between 1 and 100")
 
     app = App(args)
     for signum in (signal.SIGINT, signal.SIGTERM):

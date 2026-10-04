@@ -1,0 +1,10 @@
+<!-- Label Studio labeling config for the Pi-camera captures (phase 6). Paste it under Settings > Labeling Interface >
+     Code. The names "image" and "label" must match tools/captures_to_labelstudio.py and tools/labelstudio_to_via.py.
+     Hotkeys: 1 = Blacky, 2 = Niche. A task submitted without boxes is a reviewed empty scene (a background image). -->
+<View>
+  <Image name="image" value="$image" zoom="true" zoomControl="true"/>
+  <RectangleLabels name="label" toName="image">
+    <Label value="Blacky" background="#FFBE00" hotkey="1"/>
+    <Label value="Niche" background="#00BEFF" hotkey="2"/>
+  </RectangleLabels>
+</View>

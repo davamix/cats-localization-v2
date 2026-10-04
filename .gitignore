@@ -18,6 +18,9 @@ models/
 # Local Pi connection settings
 pi.env
 
+# Local Label Studio data folder (database, secret key) if Label Studio is started from the repository root
+/captures/
+
 # Python
 .venv/
 __pycache__/

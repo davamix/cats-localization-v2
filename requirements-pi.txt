@@ -3,4 +3,6 @@
 #   python3 -m venv --system-site-packages ~/cats-localization-v2/.venv
 #   ~/cats-localization-v2/.venv/bin/pip install --no-deps -r requirements-pi.txt
 # --no-deps: the ncnn wheel lists opencv-python/tqdm/requests/portalocker, which are only used by its model zoo.
+# The capture button in pi/app.py uses gpiozero + lgpio, also from apt (python3-gpiozero, python3-lgpio; already on the
+# Pi); user pi must be in the gpio group.
 ncnn
