@@ -27,8 +27,11 @@ A slow detector must not freeze the video, so capture, detection and streaming s
    two status lines (camera/detection FPS, inference ms, °C, MHz, plus a red `UNDER-VOLTAGE` / `ARM FREQUENCY
    CAPPED` warning) on each new frame, then JPEG-encodes it. Each frame is encoded **once** for all viewers.
 4. **Monitor thread**: every 2 s it reads the CPU temperature, ARM clock, `get_throttled` flags (helpers from
-   `pi/benchmark.py`) and the RSS of both processes; it logs a status line every minute. After
-   `--stop-on-undervoltage` s (default 30) of continuous under-voltage it stops the app with exit code 2.
+   `pi/benchmark.py`) and the RSS of both processes; it logs a status line every minute. It stops the app with
+   exit code 2 when the last `--undervoltage-window` s (60) hold `--stop-on-undervoltage` s of under-voltage in
+   total (10) or `--stop-on-dips` separate dips (3). The rule is `UndervoltageGuard` in `pi/benchmark.py`. Until
+   2026-10-06 the app only stopped after 30 s of *continuous* under-voltage, which missed a reset that came after
+   short dips (phase 4).
 5. **HTTP**: standard library `ThreadingHTTPServer`:
    - `/`: page with the stream and a stats table that polls `/stats` every second.
    - `/stream.mjpg`: `multipart/x-mixed-replace` MJPEG. A slow viewer always gets the newest JPEG and skips the
@@ -37,13 +40,15 @@ A slow detector must not freeze the video, so capture, detection and streaming s
    - `/stats`: JSON with `config`; `capture` (FPS, frames); `detection` (FPS, latest and 10-s mean ms of
      preprocess / infer / postprocess / roundtrip / latency); `stream` (viewers, FPS, render ms); `detections`
      (`class`, `score`, `box` in frame pixels); `system` (temperature, ARM MHz, throttled raw / now / since boot,
-     seconds of under-voltage now, under-voltage and capped sample counts); `memory` (RSS / peak of both processes,
+     `undervoltage_window` = seconds and dips of under-voltage in the last 60 s and the stop rule, under-voltage
+     and capped sample counts); `memory` (RSS / peak of both processes,
      MemAvailable); `pids`.
 
 Options: `--model` (default `models/yolo26n_320_scale0.9`), `--conf` (0.5), `--threads` (2), `--port` (8000),
-`--width/--height` (640×480), `--stream-fps` (15), `--jpeg-quality` (80), `--stop-on-undervoltage` (30 s).
+`--width/--height` (640×480), `--stream-fps` (15), `--jpeg-quality` (80), `--stop-on-undervoltage` (10 s),
+`--stop-on-dips` (3), `--undervoltage-window` (60 s).
 Ctrl+C or SIGTERM: stop the server, join the threads, send the child a stop message (terminate it if it hangs), stop
-and close the camera. Exit codes: 0 normal stop, 1 a part failed, 2 sustained under-voltage.
+and close the camera. Exit codes: 0 normal stop, 1 a part failed, 2 too much under-voltage.
 
 [pi/soak.py](../../pi/soak.py) samples a running app every 5 s (its `/stats` plus its own `/proc` readings: RSS and CPU
 of every process of the app, system CPU, MemAvailable) into a JSON-lines file that is fsync'ed, so it survives a

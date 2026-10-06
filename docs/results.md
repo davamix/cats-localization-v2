@@ -162,6 +162,68 @@ of the official supply's 5.1 V, plus the adapter's contact resistance and the ca
 - 320 still had 4 short under-voltage dips (kernel log; 2 of them fell on the benchmark's 5-s samples), which
   cost it a few percent in the last 2 minutes. The other two sizes had none.
 
+### 5.1 V adapter check (2026-10-06)
+
+The user replaced the supply with a 5.1 V adapter. Everything else was as in the 2026-10-03 rerun: same cooling,
+model (320), camera frames and watcher, with runs starting at ≤ 45 °C. The test was a ramp, and each step ran only
+if the previous one had no under-voltage sample. Scripts and logs are in `runs/pi/psu51/` (not in git).
+
+| Run | Under-voltage | Clock under load | Temp start → max | Inference mean / p95 | FPS |
+|---|---|---|---|---|---|
+| Boot + 18 min idle | none (`0x0` since boot) | — | 39 °C idle | — | — |
+| 2 threads, 60 s | 0 / 38 samples | 1200 MHz | 45 → 58 °C | 210 / 223 ms | 4.39 |
+| 4 threads, 60 s | 0 / 51 samples | 1200 MHz | 50 → 68 °C | 197 / 240 ms | 4.66 |
+| 4 threads, 180 s | 6 dips of 2–6 s, starting ~60 s into the load (13 / 111 samples) | 600 MHz during each dip | 44 → 71 °C | — | **Pi reset after ~2.6 min** |
+
+- **Much better than the 5.0 V supply, but 4 threads is still not safe.**
+  - Better: there was no dip during boot, and 4 threads ran for a full minute at 1.2 GHz. The old supply went into
+    continuous under-voltage as soon as the 4 threads started.
+  - Not enough: in the 3-minute run, short dips started after ~1 minute of 4-thread load, and the Pi reset ~1.5 min
+    later. The last watcher sample before the reset (18:40:52) showed 1200 MHz, no under-voltage and 71 °C, so the
+    final drop was faster than the 2-s sampling.
+- **The 30-s guard does not catch this pattern.** Each dip was 2–6 s long, so neither the watcher nor
+  `benchmark.py --stop-on-undervoltage` (both need 30 s of *continuous* under-voltage) fired before the reset.
+- **Temperature is not the problem.** The maximum was 71 °C at 4 threads (58 °C after 60 s at 2 threads), with no
+  thermal flags.
+- 4 threads at full clock is only 6% faster than 2 threads (4.66 vs 4.39 FPS), and its tail latency is worse
+  (p95 240 vs 223 ms, max 466 ms).
+- After the reset the Pi booted clean (`0x0`). The ext4 log showed only an orphan cleanup, with no filesystem
+  errors.
+
+The adapter is rated 5.1 V 3 A (15.3 W) and still feeds the Pi through the USB-C → micro-USB adapter.
+
+**Under-voltage stop changed** after this test. It used to wait for 30 s of continuous under-voltage. Now it stops
+at ≥ 10 s of under-voltage or ≥ 3 dips within 60 s, in `pi/benchmark.py`, `pi/app.py` and `pi/watch.sh` (details
+in the [phase 4 doc](phases/phase-4-deploy-benchmark.md#how-to-run)). Replayed on the watcher logs, it stops the run
+above at 18:39:42, ~70 s before the reset.
+
+**Live app at `--threads 2` with a viewer (2026-10-06).** On the old supply this configuration went into continuous
+under-voltage within seconds (phase 5). Setup:
+- Default stream (15 fps, JPEG 80), 1 viewer reading the MJPEG stream from the PC over Wi-Fi.
+- Guarded by the new stop in the app and by `pi/watch.sh`, sampled by `pi/soak.py` every 5 s.
+- Ramp: 3 minutes, then 10 minutes. Scripts and logs are in `runs/pi/psu51/` (not in git).
+
+| | 3 min | 10 min |
+|---|---|---|
+| Under-voltage (watcher 2-s samples / app 2-s samples) | 0 / 91, 0 / 90 | 0 / 279, 0 / 296 |
+| ARM clock | 1200 MHz in every sample | 1200 MHz in every sample |
+| `get_throttled` | `0x0` throughout (nothing since boot) | `0x0` throughout |
+| Temperature | 45 → 70 °C | 62 → 74.7 °C max (72 °C after 4 min, then +0.3 °C/min) |
+| Detections per second | 4.00 | 4.01 |
+| Inference / round trip / latency | 230 / 250 / 280 ms | 229 / 250 / 279 ms |
+| Stream to the viewer | 15.0 fps | 15.0 fps (render 15 ms) |
+| CPU | 2.7 cores busy (68%) | 2.7 cores (68%): detector 1.9, app 0.65 |
+| Memory | app 180 + detector 183 MiB | 181 + 185 MiB (+1.5 MiB/h), ≥ 545 MiB available |
+
+- **The 5.1 V adapter holds the live app at 2 threads with a viewer.** That's the same 2.7-core load that put the
+  old supply into continuous under-voltage. This run had no dip at all in 13 minutes, and the `get_throttled`
+  since-boot bits stayed clear.
+- 2 threads gives **4.0 detections/s**, against 2.81 with `--threads 1` (phase 5 soak). The boxes also lag the
+  video less: 279 vs 389 ms from frame capture to detections ready.
+- The 4-thread benchmark (4 busy cores) still resets the Pi, so the margin is somewhere between ~2.7 and 4 cores.
+- The temperature was still creeping up at the end (74.7 °C after 10 minutes), below the 80 °C limit. A longer run
+  will show where it settles.
+
 ### Pi vs PC ([tools/compare_detections.py](../tools/compare_detections.py))
 
 `pi/detector.py --json` on the same 12 images on both (8 validation frames including the hard cases

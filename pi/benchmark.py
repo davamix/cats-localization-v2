@@ -17,9 +17,10 @@ loop. Camera frames come from picamera2 as in camera_test.py and the live app: f
 not counted. --cool-to waits until the CPU is at or below that temperature before starting (camera not yet running),
 so runs start from the same thermal state. Needs ncnn, numpy and OpenCV, plus picamera2 for --camera.
 
-Safety: sustained under-voltage caps the CPU at 600 MHz and can end in a brownout reset (phase 4). When every
-sample for --stop-on-undervoltage seconds (default 30) reports under-voltage now, the run ends early: the summary
-and the JSON are still written (with "stopped_early"), and the exit code is 2. 0 disables the check.
+Safety: under-voltage caps the CPU at 600 MHz and can end in a brownout reset (phase 4), even when it comes as short
+dips (2026-10-06). When the last --undervoltage-window seconds (default 60) hold --stop-on-undervoltage seconds of
+under-voltage in total (default 10) or --stop-on-dips separate dips (default 3), the run ends early: the summary and
+the JSON are still written (with "stopped_early"), and the exit code is 2. 0 disables a limit.
 """
 import argparse
 import json
@@ -27,6 +28,7 @@ import platform
 import subprocess
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -83,6 +85,53 @@ def throttled() -> dict:
 def undervoltage_now(raw: str | None) -> bool:
     """True if a `get_throttled` value (e.g. "0x50005") reports under-voltage at this moment (bit 0)."""
     return raw is not None and bool(int(raw, 16) & 1)
+
+
+class UndervoltageGuard:
+    """Decides when a run must stop because of under-voltage, from `get_throttled` samples a few seconds apart.
+
+    On 2026-10-06 (4 threads, 5.1 V adapter) the Pi reset after a series of 2-6 s dips, none of which came close to
+    the 30 s of continuous under-voltage the old rule waited for. So the guard looks at the last `window_s` seconds
+    and trips when they hold `max_seconds` of under-voltage in total (each under-voltage sample counts for the time
+    since the previous sample) or `max_dips` separate dips (runs of consecutive under-voltage samples). 0 = no limit.
+    """
+
+    def __init__(self, max_seconds: float = 10, max_dips: int = 3, window_s: float = 60):
+        self.max_seconds, self.max_dips, self.window_s = max_seconds, max_dips, window_s
+        self.samples = deque()  # (time, under-voltage, seconds since the previous sample) of the last window_s
+        self.last_t = None
+
+    def describe(self) -> str:
+        limits = []
+        if self.max_seconds:
+            limits.append(f"{self.max_seconds:g} s")
+        if self.max_dips:
+            limits.append(f"{self.max_dips} dips")
+        return (f"stop at {' or '.join(limits)} of under-voltage within {self.window_s:g} s" if limits
+                else "no under-voltage stop")
+
+    def add(self, t: float, undervoltage: bool) -> str | None:
+        """Record the sample taken at time t (seconds). Returns why the run must stop, or None."""
+        self.samples.append((t, undervoltage, t - self.last_t if self.last_t is not None else 0.0))
+        self.last_t = t
+        while self.samples[0][0] <= t - self.window_s:
+            self.samples.popleft()
+        seconds, dips = self.window()
+        if self.max_seconds and seconds >= self.max_seconds:
+            return f"under-voltage for {seconds:.0f} s in the last {self.window_s:g} s"
+        if self.max_dips and dips >= self.max_dips:
+            return f"{dips} under-voltage dips in the last {self.window_s:g} s"
+        return None
+
+    def window(self) -> tuple[float, int]:
+        """Seconds of under-voltage and number of dips in the last window_s seconds."""
+        seconds, dips, previous = 0.0, 0, False
+        for _, undervoltage, dt in self.samples:
+            if undervoltage:
+                seconds += dt
+                dips += not previous
+            previous = undervoltage
+        return seconds, dips
 
 
 def proc_kib(path: str, *keys: str) -> dict[str, float | None]:
@@ -224,10 +273,15 @@ def main():
     parser.add_argument("--warmup", type=int, default=10, help="untimed frames before the measurement")
     parser.add_argument("--cool-to", type=float, help="wait until the CPU is at or below this temperature (°C)")
     parser.add_argument("--cool-timeout", type=float, default=1200, help="give up waiting after this many seconds")
-    parser.add_argument("--sample-every", type=float, default=5, help="seconds between temperature/clock samples")
-    parser.add_argument("--stop-on-undervoltage", type=float, default=30, metavar="S",
-                        help="end the run early (results kept, exit code 2) after S seconds of continuous "
-                             "under-voltage; 0 = never")
+    parser.add_argument("--sample-every", type=float, default=2,
+                        help="seconds between temperature/clock/throttle samples (the under-voltage stop uses them)")
+    parser.add_argument("--stop-on-undervoltage", type=float, default=10, metavar="S",
+                        help="end the run early (results kept, exit code 2) when the last --undervoltage-window "
+                             "seconds hold S seconds of under-voltage in total; 0 = never")
+    parser.add_argument("--stop-on-dips", type=int, default=3, metavar="N",
+                        help="same, when they hold N separate under-voltage dips; 0 = never")
+    parser.add_argument("--undervoltage-window", type=float, default=60, metavar="S",
+                        help="seconds looked at by the two limits above")
     parser.add_argument("--json", type=Path, help="write the summary, per-frame times and samples to this file")
     args = parser.parse_args()
     frames_target = None if args.duration else (args.frames or 300)
@@ -246,10 +300,9 @@ def main():
     print(f"model:   {model_name} ({detector.input_width}x{detector.input_height}), {args.threads} threads, FP32, "
           f"conf {args.conf}")
     print(f"source:  {source.description}")
-    safety = (f", stop after {args.stop_on_undervoltage:.0f} s of under-voltage" if args.stop_on_undervoltage
-              else ", no under-voltage stop")
+    guard = UndervoltageGuard(args.stop_on_undervoltage, args.stop_on_dips, args.undervoltage_window)
     print(f"length:  {f'{frames_target} frames' if frames_target else f'{args.duration:.0f} s'} "
-          f"(+{args.warmup} warm-up){safety}", flush=True)
+          f"(+{args.warmup} warm-up), {guard.describe()}", flush=True)
 
     try:
         for _ in range(args.warmup):
@@ -258,7 +311,7 @@ def main():
         before = snapshot()
         times = {stage: [] for stage in STAGES}
         frame_t, detections_per_frame, timeline = [], [], []
-        undervoltage_since, stopped_early = None, None
+        stopped_early = None
         start = next_sample = time.perf_counter()
         while True:
             now = time.perf_counter()
@@ -267,15 +320,9 @@ def main():
                           "throttled": throttled()["raw"]}
                 timeline.append(sample)
                 next_sample += args.sample_every
-                if not undervoltage_now(sample["throttled"]):
-                    undervoltage_since = None
-                else:
-                    if undervoltage_since is None:
-                        undervoltage_since = sample["t"]
-                    lasted = sample["t"] - undervoltage_since
-                    if args.stop_on_undervoltage and lasted >= args.stop_on_undervoltage:
-                        stopped_early = f"under-voltage for {lasted:.0f} s"
-                        break
+                stopped_early = guard.add(sample["t"], undervoltage_now(sample["throttled"]))
+                if stopped_early:
+                    break
             if (frames_target and len(frame_t) >= frames_target) or (args.duration and now - start >= args.duration):
                 break
             t0 = time.perf_counter()
@@ -337,7 +384,9 @@ def main():
             "config": {"model": model_name, "imgsz": [detector.input_height, detector.input_width],
                        "threads": args.threads, "conf": args.conf, "fp16": False, "source": source.description,
                        "frames": len(t), "warmup": args.warmup, "duration_s": round(wall_s, 1),
-                       "cool_to": args.cool_to, "stop_on_undervoltage_s": args.stop_on_undervoltage},
+                       "cool_to": args.cool_to,
+                       "undervoltage_stop": {"seconds": args.stop_on_undervoltage, "dips": args.stop_on_dips,
+                                             "window_s": args.undervoltage_window}},
             "stopped_early": stopped_early,
             "system": {"python": platform.python_version(), "ncnn": ncnn.__version__, "numpy": np.__version__,
                        "opencv": cv2.__version__, "kernel": platform.release(), "machine": platform.machine(),

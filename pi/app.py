@@ -29,15 +29,16 @@ How it works (a slow detector must not freeze the video):
     latest frame over a pipe and keeps the latest detections.
   - render thread: while someone watches the stream, draws the latest detections on each new frame and JPEG-encodes
     it, once for all viewers.
-  - monitor thread: every 2 s reads the CPU temperature, ARM clock, throttle flags and memory. Sustained
-    under-voltage caps the CPU at 600 MHz and can end in a brownout reset (phase 4), so after
-    --stop-on-undervoltage seconds of it (default 30, 0 = never) the app stops with exit code 2.
+  - monitor thread: every 2 s reads the CPU temperature, ARM clock, throttle flags and memory. Under-voltage caps
+    the CPU at 600 MHz and can end in a brownout reset, even as short dips (phase 4), so when the last
+    --undervoltage-window seconds (60) hold --stop-on-undervoltage seconds of it in total (10) or --stop-on-dips
+    separate dips (3), the app stops with exit code 2 (0 = no limit).
   - save thread: takes capture requests from a queue (the button callback, which runs in gpiozero's thread, only
     queues one) and the timer, checks the limits and writes the files.
   - HTTP: the standard library's ThreadingHTTPServer.
 
 Ctrl+C or SIGTERM shuts down cleanly and releases the GPIO pin. Exit code: 0 after a normal stop, 1 when a part fails,
-2 after sustained under-voltage. Needs ncnn, numpy, OpenCV, picamera2 and gpiozero + lgpio for the button (no torch).
+2 after too much under-voltage. Needs ncnn, numpy, OpenCV, picamera2 and gpiozero + lgpio for the button (no torch).
 """
 import argparse
 import json
@@ -59,7 +60,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from benchmark import arm_clock_mhz, cpu_temp, proc_kib, throttled, undervoltage_now
+from benchmark import UndervoltageGuard, arm_clock_mhz, cpu_temp, proc_kib, throttled, undervoltage_now
 from detector import Detector
 
 SENSOR_SIZE = (1640, 1232)  # IMX219 full field of view (the 640x480 sensor mode is a crop)
@@ -213,7 +214,7 @@ class App:
         # latest system sample
         self.system, self.memory = {}, {}
         self.samples = self.undervoltage_samples = self.capped_samples = 0
-        self.undervoltage_since = None
+        self.guard = UndervoltageGuard(args.stop_on_undervoltage, args.stop_on_dips, args.undervoltage_window)
 
         self.server = self.server_thread = self.process = self.conn = self.picam2 = None
         self.threads = []
@@ -230,7 +231,8 @@ class App:
         self.config = {"model": Path(args.model).name, "imgsz": self.imgsz, "threads": args.threads, "conf": args.conf,
                        "prelabel_conf": args.prelabel_conf, "frame": [args.width, args.height],
                        "sensor": list(SENSOR_SIZE), "stream_fps": args.stream_fps, "jpeg_quality": args.jpeg_quality,
-                       "stop_on_undervoltage_s": args.stop_on_undervoltage}
+                       "undervoltage_stop": {"seconds": args.stop_on_undervoltage, "dips": args.stop_on_dips,
+                                             "window_s": args.undervoltage_window}}
         for loop in (self.capture_loop, self.detection_loop, self.render_loop, self.monitor_loop, self.save_loop):
             self.threads.append(self.start_thread(loop))
         self.start_button()  # last: a press only queues a request, which the save thread handles
@@ -439,15 +441,10 @@ class App:
                 self.samples += 1
                 self.undervoltage_samples += undervoltage
                 self.capped_samples += "ARM frequency capped" in state["now"]
-                if not undervoltage:
-                    self.undervoltage_since = None
-                elif self.undervoltage_since is None:
-                    self.undervoltage_since = now
-                lasted = now - self.undervoltage_since if undervoltage else 0.0
-            limit = self.args.stop_on_undervoltage
-            if limit and undervoltage and lasted >= limit:
-                log(f"under-voltage for {lasted:.0f} s: the CPU is capped at 600 MHz and a brownout reset may follow")
-                self.stop(2, f"under-voltage for {lasted:.0f} s")
+                stop_reason = self.guard.add(now, undervoltage)
+            if stop_reason:
+                log(f"{stop_reason}: the CPU drops to 600 MHz in each dip and a brownout reset may follow")
+                self.stop(2, stop_reason)
                 return
             if now >= next_log:
                 log(self.status_line())
@@ -629,7 +626,7 @@ class App:
     def stats(self) -> dict:
         now = time.perf_counter()
         with self.cond:
-            undervoltage_for = now - self.undervoltage_since if self.undervoltage_since is not None else 0.0
+            undervoltage_s, dips = self.guard.window()
             return {
                 "uptime_s": round(now - self.start_time, 1),
                 "config": self.config,
@@ -643,7 +640,9 @@ class App:
                 "detections": [{"class": self.names[int(class_id)], "score": round(float(score), 3),
                                 "box": [round(float(v), 1) for v in (x1, y1, x2, y2)]}
                                for x1, y1, x2, y2, score, class_id in self.detections],
-                "system": {**self.system, "undervoltage_for_s": round(undervoltage_for, 1),
+                "system": {**self.system,
+                           "undervoltage_window": {"seconds": round(undervoltage_s, 1), "dips": dips,
+                                                   "window_s": self.guard.window_s, "stop": self.guard.describe()},
                            "undervoltage_samples": self.undervoltage_samples, "capped_samples": self.capped_samples,
                            "samples": self.samples, "sample_every_s": MONITOR_S},
                 "memory": self.memory,
@@ -759,6 +758,7 @@ async function refresh() {
   try {
     const s = await (await fetch("/stats", {cache: "no-store"})).json();
     const d = s.detection, m = d.mean_ms, sys = s.system, mem = s.memory, t = sys.throttled || {};
+    const uv = sys.undervoltage_window;
     const now = (t.now || []).join(", ");
     rows = [
       ["Camera", `${f(s.capture.fps, 1)} fps`],
@@ -769,6 +769,7 @@ async function refresh() {
       ["Throttled", `${t.raw ?? "n/a"} ` + (now ? `<span class="warn">${esc(now)}</span>` : "(now: none)")],
       ["Since start", `under-voltage ${sys.undervoltage_samples}, capped ${sys.capped_samples} ` +
                       `of ${sys.samples} samples`],
+      [`Last ${uv.window_s} s`, `under-voltage ${f(uv.seconds)} s in ${uv.dips} dip(s) (${esc(uv.stop)})`],
       ["Memory", `app ${f(mem.app?.VmRSS)} + detector ${f(mem.detector?.VmRSS)} MiB, ` +
                  `${f(mem.MemAvailable)} MiB available`],
       ["Model", `${esc(s.config.model)}, ${s.config.threads} threads, conf ${s.config.conf}`],
@@ -877,8 +878,13 @@ def main():
     parser.add_argument("--stream-fps", type=float, default=15,
                         help="camera frame rate, and so the highest stream frame rate")
     parser.add_argument("--jpeg-quality", type=int, default=80, help="JPEG quality of the stream (1-100)")
-    parser.add_argument("--stop-on-undervoltage", type=float, default=30, metavar="S",
-                        help="stop (exit code 2) after S seconds of continuous under-voltage; 0 = never")
+    parser.add_argument("--stop-on-undervoltage", type=float, default=10, metavar="S",
+                        help="stop (exit code 2) when the last --undervoltage-window seconds hold S seconds of "
+                             "under-voltage in total; 0 = never")
+    parser.add_argument("--stop-on-dips", type=int, default=3, metavar="N",
+                        help="same, when they hold N separate under-voltage dips; 0 = never")
+    parser.add_argument("--undervoltage-window", type=float, default=60, metavar="S",
+                        help="seconds looked at by the two limits above")
     captures = parser.add_argument_group("captures (training images)")
     captures.add_argument("--captures", default="captures", help="folder for the captures")
     captures.add_argument("--capture-quality", type=int, default=95, help="JPEG quality of the captures (1-100)")

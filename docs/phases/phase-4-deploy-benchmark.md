@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Done |
-| **Last updated** | 2026-10-03 |
+| **Last updated** | 2026-10-06 |
 | **Depends on** | Phase 3 |
 
 ## Goal
@@ -26,6 +26,12 @@ This is a measurement phase, not an optimisation phase (that is phase 7).
 - [x] Add the results to [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and-baseline-benchmark-2026-10-02).
 - [x] 2026-10-03, after the user upgraded the cooling and the supply: probe 320 / 4 threads (still under-voltage,
       stopped by the watcher after 30 s), then rerun the three 10-minute 2-thread runs (no thermal capping).
+- [x] 2026-10-06, after the user switched to a 5.1 V adapter: ramp at 320, with 2 threads for 60 s, then 4 threads
+      for 60 s, then 4 threads for 180 s. The first two runs were clean, but the 3-minute 4-thread run ended in a
+      **reset** (see Results).
+- [x] 2026-10-06: under-voltage stop changed to ≥ 10 s or ≥ 3 dips within 60 s (benchmark, app, `pi/watch.sh`),
+      tested with a fake `vcgencmd`. Then a live app test at `--threads 2` + 1 viewer (3 + 10 min) had no
+      under-voltage at all.
 
 ## How to run
 
@@ -65,14 +71,35 @@ Benchmark (on the Pi, from `~/cats-localization-v2`):
 ```
 
 Options: `--threads`, `--frames N` or `--duration S`, `--warmup 10`, `--conf 0.5`, `--cool-to °C` (wait before
-starting; the camera is opened afterwards), `--sample-every 5` (temperature / clock / throttle samples),
-`--width/--height` and `--sensor-size` for the camera, `--stop-on-undervoltage 30` (see below). Long runs must
+starting; the camera is opened afterwards), `--sample-every 2` (temperature / clock / throttle samples; 5 before
+2026-10-06), `--width/--height` and `--sensor-size` for the camera, `--stop-on-undervoltage 10`, `--stop-on-dips 3`
+and `--undervoltage-window 60` (see below). Long runs must
 survive an SSH disconnect: start them with `(setsid nohup ... > log 2>&1 < /dev/null &)` (see the handover notes).
 
-**Under-voltage stop (default on).** If every sample for `--stop-on-undervoltage` seconds (default 30) reports
-under-voltage now, the run ends early. The summary and the JSON are still written, with `"stopped_early"` set, and the
-exit code is 2. Pass `0` to turn it off (only for deliberate under-voltage tests). Added on 2026-10-03 after the
-brownout; tested on the Pi (4 threads, `--stop-on-undervoltage 10` → stopped after 10 s, exit 2, no reset).
+**Under-voltage stop (default on).** The run ends early when the last `--undervoltage-window` seconds (default 60)
+hold either of these:
+- `--stop-on-undervoltage` seconds of under-voltage in total (default 10; each under-voltage sample counts for the
+  time since the previous one);
+- `--stop-on-dips` separate dips (default 3; a dip is a run of consecutive under-voltage samples).
+
+The summary and the JSON are still written, with `"stopped_early"` set, and the exit code is 2. Pass `0` to turn a
+limit off (only for deliberate under-voltage tests).
+- History: added on 2026-10-03 after the brownout, as "30 s of continuous under-voltage". On 2026-10-06 that rule
+  missed a reset that came after 2–6 s dips, so it became the window rule above. The rule is `UndervoltageGuard`
+  in `pi/benchmark.py`, and `pi/app.py` uses the same class.
+- Replayed on every phase 4 / 2026-10-06 watcher log, the window rule stops the 2026-10-06 run at 18:39:42, ~70 s
+  before the reset. It stops the old supply's 4-thread probes after ~20 s instead of 30 s, and it doesn't stop any
+  run that went fine (the 10-minute 2-thread runs, the phase 5 soak).
+- Tested on the Pi with a fake `vcgencmd` that reports under-voltage on demand (`runs/pi/psu51/guardtest.sh`). The
+  benchmark stopped at the 3rd dip and after 10 s of one long dip, the app at the 3rd dip, and `pi/watch.sh` stopped
+  a benchmark whose own stop was off.
+
+**Watcher: [pi/watch.sh](../../pi/watch.sh)** (in git since 2026-10-06; before that it was `runs/pi/phase4b/watch.sh`).
+- Every 2 s it appends uptime, temperature, clock, throttle flags and load to a log synced to disk, which survives
+  a reset.
+- Independently of the programs' own stop, it applies the same rule (10 s or 3 dips in 60 s) and sends SIGTERM to
+  `pi/benchmark.py` and `pi/app.py`.
+- Usage: `bash pi/watch.sh <log> [max seconds] [max dips] &` next to the job, then `kill` it afterwards.
 
 The phase 4 suite ran these from a `setsid nohup` job on the Pi (scripts kept in `runs/pi/phase4/` on the PC, not
 in git), each with `--camera --cool-to 55 --cool-timeout 900 --json results/phase4/<name>.json`:
@@ -118,28 +145,44 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
     - Cooling is solved: idle 39 °C, ~70 °C after 10 minutes at 2 threads, no thermal cap.
     - Under-voltage is not solved: 4 threads still trigger it within seconds, with or without the camera, and
       there was one dip during boot. 2 threads is clean, apart from 4 short dips in the 320 run.
+  - **2026-10-06:** the user switched to a 5.1 V adapter. It is better, but 4 threads is still not safe.
+    - Better: the boot was clean, 2 threads and 4 threads each ran 60 s with no dip, and 4 threads gave 4.66 FPS
+      vs 4.39.
+    - Not safe: in a 3-minute 4-thread run, 2–6 s dips started after ~1 min of load, and the Pi **reset** ~1.5 min
+      later.
+    - Neither 30-s guard fired, because each dip was short. Temperature peaked at 71 °C, so heat is not the issue.
+    - The **live app at `--threads 2` with a viewer** (~2.7 busy cores) ran 3 + 10 minutes with **no under-voltage
+      at all**, at 1200 MHz, 4.0 detections/s, max 74.7 °C. The old supply failed this within seconds.
 - **Decision:** stay at input 320 (`yolo26n_320_scale0.9`). A 416 + `scale` 0.9 model is not worth training now.
   Revisit only if Pi-camera images (phase 6) show missed far-away cats *and* the Pi's supply holds 4 threads (the
   cooling is now good enough).
 
 ## Handover notes
 
-- **Hardware.** The cooling is fixed (2026-10-03). The supply still can't hold 4 threads, and **the user decided to
-  keep the current adapter for now**, so everything runs at 2 threads.
-  - The current supply is a USB-C charger (5 V, 3.6 A, 18 W) feeding the Pi through a USB-C → micro-USB adapter.
-    The likely culprits are 5.0 V instead of 5.1 V and the adapter's contact resistance plus the cable. The usual
-    fix is a 5.1 V / 2.5 A micro-USB supply with an attached cable, plugged straight into the Pi.
-  - After a power fix, rerun 320 / 4 threads: first the 60 s probe, then 10 minutes. If 4 threads beats 2 at full
-    clock, rerun 416 too and update the phase 5 default.
+- **Hardware.** The cooling is fixed (2026-10-03). The 5.1 V adapter of 2026-10-06 holds the live app at 2 threads
+  with a viewer (no dip in 13 min). It can't hold 4 threads: dips start after ~1 min, then the Pi resets. So the
+  benchmark stays at 2 threads, and the live app is back at 2 threads (user decision, 2026-10-06; see phase 6).
+  - **The old 30-s continuous under-voltage stop did not protect against the 2026-10-06 pattern** (short 2–6 s
+    dips, then a brownout). Since 2026-10-06 `pi/benchmark.py`, `pi/app.py` and `pi/watch.sh` stop at ≥ 10 s of
+    under-voltage or ≥ 3 dips within 60 s (see "Under-voltage stop" above).
+  - Supply history: from 2026-10-03 it was a USB-C charger (5 V, 3.6 A, 18 W) feeding the Pi through a USB-C →
+    micro-USB adapter. On 2026-10-06 the user changed it to a **5.1 V 3 A (15.3 W) adapter, still through the
+    USB-C → micro-USB adapter**. Raising the voltage helped but was not enough.
+    - The current rating is not the problem: a Pi 3B needs ≤ 2.5 A.
+    - Remaining suspects: the USB-C → micro-USB adapter's contact resistance, the cable, and Wi-Fi current peaks.
+    - The usual fix is a 5.1 V / 2.5 A micro-USB supply with an attached cable, plugged straight into the Pi (no
+      adapter).
+  - After a power fix, rerun 320 / 4 threads with the new guard: 60 s, then 3 minutes (2026-10-06 reset at
+    ~2.6 min), then 10 minutes. 4 threads gave only +6% FPS at full clock (4.66 vs 4.39), so the main gain from a
+    power fix is room for the live app at 2 threads, not 4-thread speed.
   - The `get_throttled` "since boot" bits are sticky, so judge each run by the per-sample `throttled` values in the
     JSON timeline or the watcher log (bit 0 = under-voltage now, bit 1 = frequency capped now).
   - **Control temperatures and resets in load tests** (the user's request):
     - Ramp up: a short probe before any 10-minute run.
-    - `pi/benchmark.py` stops by itself after 30 s of continuous under-voltage (`--stop-on-undervoltage`, see
-      above). Exit code 2 means the run was stopped.
-    - For a log that survives a reset, also run the Pi-side watcher (`runs/pi/phase4b/watch.sh` on the PC, not in
-      git). Every 2 s it appends uptime, temperature, clock and throttle flags to a file synced to disk.
-      `run_one.sh` and `suite3.sh` in the same folder show how to use it.
+    - `pi/benchmark.py` and `pi/app.py` stop by themselves at ≥ 10 s of under-voltage or ≥ 3 dips within 60 s
+      (see above). Exit code 2 means the run was stopped.
+    - For a log that survives a reset, also run the watcher [pi/watch.sh](../../pi/watch.sh), which applies the
+      same stop. `runs/pi/psu51/live.sh` on the PC (app + `pi/soak.py`, not in git) shows how to use it.
     - From the PC, compare the boot time (`uptime -s`) between polls to detect a reset.
 - **For phase 5 (`pi/app.py`):**
   - Default to **`--threads 2`**. The app also captures, draws and JPEG-encodes. If that keeps a third core busy,
@@ -159,5 +202,5 @@ Full tables in [docs/results.md](../results.md#phase-4--deployment-to-the-pi-and
     cooling upgrade). Wrap polls in `timeout 90` (Git Bash) and don't add load with extra SSH sessions.
   - The journal is not persistent (`journalctl -b -1` finds nothing after a reboot), so a crash leaves no log.
 - The Pi now holds `models/yolo26n_320_scale0.9`, `models/yolo26n_416`, `models/yolo26n_640`, `images/compare/` and
-  `results/` (`phase4/` = 2026-10-02 runs, `phase4b/` = 2026-10-03 reruns; ~36 MB in total); 2.5 GB free. Both
+  `results/` (`phase4/` = 2026-10-02 runs, `phase4b/` = 2026-10-03 reruns, `psu51/` = 2026-10-06 adapter + live tests, `guardtest/` = stop tests; ~36 MB in total); 2.5 GB free. Both
   result folders are also in `runs/pi/` on the PC.

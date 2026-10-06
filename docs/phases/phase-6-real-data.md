@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | In progress: capture tooling, download and labelling tools done; collection and labelling next |
-| **Last updated** | 2026-10-04 |
+| **Last updated** | 2026-10-06 |
 | **Depends on** | Phase 5 |
 
 ## Goal
@@ -167,13 +167,31 @@ image takes seconds when the model is right).
 ## Handover notes
 
 - **Run the app for collection** (on the Pi, from `~/cats-localization-v2`):
-  `(setsid nohup .venv/bin/python pi/app.py --threads 1 --capture-every 10 > results/phase6/app.log 2>&1 < /dev/null &)`.
+  `(setsid nohup .venv/bin/python pi/app.py --threads 2 --capture-every 10 > results/phase6/app.log 2>&1 < /dev/null &)`
+  (`--threads 2` since 2026-10-06, see below; it was `--threads 1`).
   Stop it with `pkill -TERM -f "[p]i/app.py"` (the brackets stop the pattern from matching the shell that runs
   `pkill` itself: a plain `pkill -f pi/app.py` through `pi_remote.py run` kills its own SSH shell, exit code 127).
 - **Power first**: check the power path in the new room before long timer runs (same charger + USB-C → micro-USB
   adapter? an extension lead or a longer cable now?). The dips started with a viewer connected; the stream costs
-  ~0.4 core, so for long collection runs **close the page** when nobody watches. If the dips get longer than 30 s, the
-  app stops itself (exit code 2); if the Pi resets, stop and report.
+  ~0.4 core, so for long collection runs **close the page** when nobody watches. At ≥ 10 s of under-voltage or
+  ≥ 3 dips within 60 s the app stops itself (exit code 2); if the Pi resets, stop and report.
+- **2026-10-06: supply changed to a 5.1 V adapter** (phase 4 test, see
+  [results.md](../results.md#51-v-adapter-check-2026-10-06)). It is better: the boot was clean, and 2 threads and
+  4 threads each ran 60 s with no dip. But a 3-minute 4-thread run reset the Pi after short 2–6 s dips that the
+  old 30-s stop did not catch.
+  - The stop now trips at ≥ 10 s of under-voltage or ≥ 3 dips within 60 s (app, benchmark, `pi/watch.sh`).
+  - **Live test, same day:** `--threads 2` + 1 viewer for 3 + 10 min had **no under-voltage at all**, 1200 MHz,
+    4.0 detections/s (vs 2.8 at 1 thread), max 74.7 °C
+    ([results](../results.md#51-v-adapter-check-2026-10-06)).
+  - **Decided (user, 2026-10-06):** the collection runs with `--threads 2` (the code default).
+- **Watch the temperature on long runs** (the user's open point for 2 threads).
+  - The 10-minute live test reached 74.7 °C and was still rising slowly (+0.3 °C/min at the end), so it's not known
+    yet where it settles. The firmware caps the clock at 80 °C.
+  - The app logs °C and MHz every minute in `results/phase6/app.log`, and `/stats` has them live. For a log that
+    survives a reset, run `pi/soak.py` next to the app (sampling the app) or `pi/watch.sh`.
+  - In the first long runs, check the peak temperature and any `ARM frequency capped` / clock < 1200 MHz samples.
+  - If it gets close to 80 °C: close the stream page when nobody watches (~0.4 core), lower `--stream-fps`, improve
+    the cooling, or go back to `--threads 1`.
 - **Disk**: 2.5 GB free on the Pi. Timer captures at 10 min are ~10 MB/day; pull them to the PC regularly. Nothing
   deletes captures on the Pi (neither the app nor `pull_captures.py`); delete old days by hand after pulling, if
   needed, inside `~/cats-localization-v2/captures/`.
