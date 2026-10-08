@@ -1,0 +1,27 @@
+# Starts the live app with captures (pi/app.py) at boot, for the phase 6 collection. Installed by
+# pi/system/install.sh (sudo bash pi/system/install.sh). Status: systemctl status cats-app; stop it before
+# benchmarks or tests that need the camera, port 8000 or the GPIO pins: sudo systemctl stop cats-app.
+[Unit]
+Description=Cats live stream and captures (pi/app.py)
+# a part that keeps failing (e.g. the camera): give up after 5 starts in 10 minutes
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/cats-localization-v2
+# 2 ncnn threads (code default, 5.1 V adapter); captures only from the button and the page (no timer)
+ExecStart=/home/pi/cats-localization-v2/.venv/bin/python pi/app.py
+# the journal is lost at every power-off: keep the app's log on the SD card
+StandardOutput=append:/home/pi/cats-localization-v2/results/phase6/service.log
+StandardError=inherit
+Restart=on-failure
+RestartSec=10
+# exit code 2 = stopped on under-voltage: do not restart into the same brownout
+RestartPreventExitStatus=2
+# SIGTERM to the app only; it stops its detector process itself (and blinks the LED 5 s on an error)
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

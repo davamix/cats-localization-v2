@@ -1,14 +1,16 @@
-"""Test a push button on a GPIO pin. Read-only: the pin is only ever configured as an input.
+"""Test a push button on a GPIO pin, and optionally an LED. The button pin is only ever configured as an input.
 
     python pi/button_test.py                              # GPIO 25 (BCM), button to GND, internal pull-up, 50 ms debounce
     python pi/button_test.py --bounce-ms 0 --seconds 90   # raw edges, to see contact bounce
+    python pi/button_test.py --led-pin 24                 # + the LED on GPIO 24 (an output) lights while pressed
 
 Prints the pin factory and the idle state, then one line per edge the pin reports (time, level, ms since the previous
 edge, from the kernel's event timestamps) and gpiozero's press / release events, then a summary. Leave the button
 alone for the first --quiet-s seconds: any edge in that window means a floating or noisy pin.
 
 The pull must match the wiring: --pull up for a button between the pin and GND (pressed = low), --pull down for a
-button between the pin and 3.3 V (pressed = high). Run it while pi/app.py is stopped if the app uses the same pin.
+button between the pin and 3.3 V (pressed = high). The LED goes from --led-pin through a resistor (220 ohm) to GND.
+Run it while pi/app.py is stopped if the app uses the same pins (with the service: sudo systemctl stop cats-app).
 Needs gpiozero and lgpio (apt).
 """
 import argparse
@@ -16,7 +18,7 @@ import signal
 import threading
 import time
 
-from gpiozero import Button, Device
+from gpiozero import LED, Button, Device
 
 
 def now() -> str:
@@ -31,11 +33,14 @@ def main():
                         help="internal pull: up for a button to GND, down for a button to 3.3 V")
     parser.add_argument("--bounce-ms", type=float, default=50, help="debounce time in ms (0 = off: raw edges)")
     parser.add_argument("--seconds", type=float, default=90, help="how long to listen")
+    parser.add_argument("--led-pin", type=int, default=0,
+                        help="GPIO (BCM) of an LED that lights while the button is pressed; 0 = no LED")
     parser.add_argument("--quiet-s", type=float, default=20,
                         help="first seconds in which nobody touches the button (floating-pin check)")
     args = parser.parse_args()
 
     button = Button(args.pin, pull_up=args.pull == "up", bounce_time=args.bounce_ms / 1000 or None)
+    led = LED(args.led_pin) if args.led_pin else None  # an output, off at the start
     start = time.monotonic()
     edges = []  # (seconds since start, kernel event time in s, level)
     events = {"pressed": 0, "released": 0}
@@ -61,6 +66,8 @@ def main():
             with lock:
                 events[name] += 1
                 print(f"{now()}   Button: {name.upper()} (#{events[name]})", flush=True)
+            if led:
+                led.value = name == "pressed"
         return handler
 
     button.when_pressed, button.when_released = on_event("pressed"), on_event("released")
@@ -70,7 +77,8 @@ def main():
         signal.signal(signum, lambda *_: stop.set())
     try:
         print(f"pin factory {type(Device.pin_factory).__name__}, GPIO {args.pin}, pull-{args.pull}, "
-              f"debounce {args.bounce_ms:g} ms", flush=True)
+              f"debounce {args.bounce_ms:g} ms" + (f"; LED on GPIO {args.led_pin} lights while pressed" if led else ""),
+              flush=True)
         print(f"idle: level {'high' if button.pin.state else 'low'}, is_pressed {button.is_pressed}", flush=True)
         print(f"{now()} listening for {args.seconds:g} s: don't touch the button for the first {args.quiet_s:g} s",
               flush=True)
@@ -80,6 +88,8 @@ def main():
         level_at_end = button.pin.state
     finally:
         button.close()  # releases the pin (it stays an input)
+        if led:
+            led.close()  # off, and the pin goes back to an input
 
     with lock:
         quiet = [e for e in edges if e[0] < args.quiet_s]

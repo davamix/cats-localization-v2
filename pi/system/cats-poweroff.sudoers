@@ -1,0 +1,3 @@
+# Lets pi/app.py (user pi) power the Pi off on a long press of the capture button, without a password; nothing else.
+# Installed as /etc/sudoers.d/cats-poweroff by pi/system/install.sh.
+pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff

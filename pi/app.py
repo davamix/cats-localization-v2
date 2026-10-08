@@ -18,7 +18,14 @@ same name: time, source, camera metadata (exposure, gain, lux, colour temperatur
 a score >= --prelabel-conf as pre-labels. The saved frame is the one the latest finished detection ran on, so image and
 pre-labels match even when a cat moves (it is up to ~0.5 s older than the live picture). At most one capture per
 --capture-min-interval seconds; none when the captures use more than --capture-max-mb or the SD card has less than
---capture-min-free-mb free.
+--capture-min-free-mb free, and none before the system clock is NTP-synchronised (--wait-for-clock): the Pi has no
+clock battery, so after a power-on its clock is behind until it syncs, and a capture would get a wrong date.
+
+Button and LED (phase 6 collection, the app starts at boot with pi/system/cats-app.service): with --button-hold-s
+(5 s), a short press takes a capture when the button is released, and holding it powers the Pi off cleanly
+(`sudo -n systemctl poweroff`, allowed by pi/system/cats-poweroff.sudoers). The LED on --led-pin (24, through a
+220 ohm resistor to GND) shows the state: slow blink = starting or waiting for the clock, off = ready, on for 1 s =
+capture saved, 3 quick blinks = capture refused, fast blink = powering off, or the app stopped itself.
 
 How it works (a slow detector must not freeze the video):
   - capture thread: picamera2 with the full-field-of-view sensor mode (1640x1232) scaled by the ISP to
@@ -34,11 +41,13 @@ How it works (a slow detector must not freeze the video):
     --undervoltage-window seconds (60) hold --stop-on-undervoltage seconds of it in total (10) or --stop-on-dips
     separate dips (3), the app stops with exit code 2 (0 = no limit).
   - save thread: takes capture requests from a queue (the button callback, which runs in gpiozero's thread, only
-    queues one) and the timer, checks the limits and writes the files.
+    queues one) and the timer, checks the limits and writes the files. The monitor thread enables captures once
+    the first detection is done and the clock is synchronised.
   - HTTP: the standard library's ThreadingHTTPServer.
 
-Ctrl+C or SIGTERM shuts down cleanly and releases the GPIO pin. Exit code: 0 after a normal stop, 1 when a part fails,
-2 after too much under-voltage. Needs ncnn, numpy, OpenCV, picamera2 and gpiozero + lgpio for the button (no torch).
+Ctrl+C or SIGTERM shuts down cleanly and releases the GPIO pins. Exit code: 0 after a normal stop, 1 when a part
+fails, 2 after too much under-voltage (the LED blinks fast for 5 s before the app exits with 1 or 2). Needs ncnn,
+numpy, OpenCV, picamera2 and gpiozero + lgpio for the button and LED (no torch).
 """
 import argparse
 import json
@@ -48,6 +57,7 @@ import queue
 import shutil
 import signal
 import socket
+import subprocess
 import threading
 import time
 import traceback
@@ -78,10 +88,13 @@ CAMERA_KEYS = ("ExposureTime", "AnalogueGain", "DigitalGain", "Lux", "ColourTemp
 CAPTURE_WAIT_S = 5  # longest POST /capture waits for the save thread
 # capture result status -> HTTP status of POST /capture
 CAPTURE_HTTP = {"saved": 201, "too_soon": 429, "not_ready": 503, "disk_limit": 507, "stopping": 503, "timeout": 504}
+CLOCK_SYNCED = Path("/run/systemd/timesync/synchronized")  # created by systemd-timesyncd at the first NTP sync
+POWEROFF = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]  # allowed without a password by cats-poweroff.sudoers
+ALARM_S = 5  # the LED blinks fast this long before the app exits with an error
 
 
 def log(message: str):
-    print(f"{time.strftime('%H:%M:%S')} {message}", flush=True)
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}", flush=True)  # with the date: the service log spans days
 
 
 def fmt(value, spec: str = ".0f") -> str:
@@ -156,6 +169,64 @@ class CaptureRequest:
         self.done.set()
 
 
+class Indicator:
+    """The status LED: a base state plus short patterns on top of it. Does nothing without an LED.
+
+    Base states: "starting" = slow blink (starting, or waiting for the clock), "ready" = off, "alarm" = fast blink
+    (powering off, or stopping on an error). Patterns: "saved" = on for 1 s, "refused" = 3 quick blinks; then back to
+    the base state. Called from several threads (save, monitor, gpiozero's, main), hence the lock.
+    """
+
+    def __init__(self, led=None):
+        self.led, self.lock, self.base = led, threading.Lock(), "ready"
+        self.pattern_id, self.pattern_running = 0, False
+
+    def set_base(self, base: str):
+        with self.lock:
+            self.base = base
+            if base == "alarm" or not self.pattern_running:  # a running pattern shows the new base when it ends
+                self.pattern_running = False
+                self.show_base()
+
+    def show_base(self):  # under self.lock
+        if self.led is None:
+            return
+        if self.base == "starting":
+            self.led.blink(0.5, 0.5)
+        elif self.base == "alarm":
+            self.led.blink(0.1, 0.1)
+        else:
+            self.led.off()
+
+    def pattern(self, name: str):
+        with self.lock:
+            if self.led is None or self.base == "alarm":
+                return
+            self.pattern_id += 1
+            self.pattern_running = True
+            if name == "saved":
+                self.led.on()
+                seconds = 1.0
+            else:
+                self.led.blink(0.15, 0.15, n=3)
+                seconds = 0.9
+            timer = threading.Timer(seconds, self.end_pattern, args=(self.pattern_id,))
+            timer.daemon = True
+            timer.start()
+
+    def end_pattern(self, pattern_id: int):
+        with self.lock:
+            if self.pattern_running and pattern_id == self.pattern_id:  # not replaced or cancelled in the meantime
+                self.pattern_running = False
+                self.show_base()
+
+    def close(self):
+        with self.lock:
+            if self.led is not None:
+                self.led.close()  # off; the pin goes back to an input
+                self.led = None
+
+
 def folder_usage(folder: Path) -> tuple[int, int, Path | None]:
     """Captures already on disk -> (number of images, bytes of all files, newest image or None)."""
     images, size, newest = 0, 0, None
@@ -207,7 +278,10 @@ class App:
         self.last_capture = None  # summary of the last capture for /stats
         self.next_timed = None  # perf_counter time of the next timed capture
         self.disk_free = None  # bytes free on the captures' file system
-        self.button, self.button_state = None, "off"
+        self.button, self.button_state, self.button_held = None, "off", False
+        self.indicator, self.led_state = Indicator(), "off"
+        # captures start once the first detection is done and the clock is synchronised
+        self.ready, self.clock_synced, self.session = False, False, None
         # latest annotated JPEG for the stream
         self.jpeg, self.jpeg_id, self.viewers = None, 0, 0
         self.rendered = Window()
@@ -225,6 +299,7 @@ class App:
         args = self.args
         self.server = ThreadingHTTPServer(("", args.port), Handler)  # bind first: fail fast if the port is taken
         self.server.app = self
+        self.start_led()  # first: it blinks while the detector and the camera start
         self.start_detector()
         self.start_camera()
         self.start_captures()
@@ -290,13 +365,28 @@ class App:
             except (OSError, ValueError, KeyError):
                 pass
         self.disk_free = shutil.disk_usage(self.capture_dir).free
-        if args.capture_every:
-            self.next_timed = time.perf_counter() + args.capture_every * 60
         log(f"captures: {self.capture_dir.resolve()} ({self.capture_files} images, {self.capture_bytes / 1e6:.1f} MB; "
             f"{self.disk_free / 1e6:.0f} MB free), JPEG quality {args.capture_quality}, pre-labels >= "
             f"{args.prelabel_conf}, at most one per {args.capture_min_interval:g} s, timed "
             f"{f'every {args.capture_every:g} min' if args.capture_every else 'off'}; limits {args.capture_max_mb:g} MB "
             f"of captures, {args.capture_min_free_mb:g} MB free")
+
+    def start_led(self):
+        pin = self.args.led_pin
+        if not pin:
+            return
+        try:
+            from gpiozero import LED  # imported here so the detector process does not load it
+
+            self.indicator = Indicator(LED(pin))
+        except Exception as error:  # no GPIO (e.g. pin busy, or not a Pi): run without the LED
+            self.led_state = f"unavailable: {error}"
+            log(f"LED: GPIO {pin} {self.led_state}")
+            return
+        self.indicator.set_base("starting")
+        self.led_state = f"GPIO {pin}"
+        log(f"LED: GPIO {pin} (slow blink = starting / waiting for the clock, off = ready, on 1 s = saved, "
+            f"3 blinks = refused, fast blink = powering off / stopped on an error)")
 
     def start_button(self):
         args = self.args
@@ -306,20 +396,50 @@ class App:
             from gpiozero import Button, Device  # imported here so the detector process does not load it
 
             self.button = Button(args.button_pin, pull_up=args.button_pull == "up",
-                                 bounce_time=args.button_bounce_ms / 1000 or None)
-            self.button.when_pressed = self.on_button
+                                 bounce_time=args.button_bounce_ms / 1000 or None, hold_time=args.button_hold_s or 1)
+            if args.button_hold_s:  # capture on release, so a long press only powers off
+                self.button.when_released = self.on_release
+                self.button.when_held = self.on_hold
+            else:
+                self.button.when_pressed = self.on_press
             factory = type(Device.pin_factory).__name__
         except Exception as error:  # no GPIO (e.g. pin busy, or not a Pi): run without the button
             self.button, self.button_state = None, f"unavailable: {error}"
             log(f"button: GPIO {args.button_pin} {self.button_state}; captures only from the page and the timer")
             return
-        self.button_state = (f"GPIO {args.button_pin}, pull-{args.button_pull}, debounce {args.button_bounce_ms:g} ms "
-                             f"({factory})")
+        self.button_state = (f"GPIO {args.button_pin}, pull-{args.button_pull}, debounce {args.button_bounce_ms:g} ms, "
+                             + (f"hold {args.button_hold_s:g} s = power off" if args.button_hold_s else "no power-off")
+                             + f" ({factory})")
         log(f"button: {self.button_state}")
 
-    def on_button(self):
-        """gpiozero calls this in its own thread on every press: only queue a request."""
+    # gpiozero calls these in its own thread: only queue a request, or start a thread
+
+    def on_press(self):
         self.capture_requests.put(CaptureRequest("button"))
+
+    def on_release(self):
+        if self.button_held:  # the end of a long press: no capture
+            self.button_held = False
+        else:
+            self.capture_requests.put(CaptureRequest("button"))
+
+    def on_hold(self):
+        self.button_held = True
+        threading.Thread(target=self.power_off, name="poweroff", daemon=True).start()
+
+    def power_off(self):
+        """Long press: power the Pi off. systemd then stops this app with SIGTERM like any other service."""
+        log(f"button held for {self.args.button_hold_s:g} s: powering off ({' '.join(POWEROFF)})")
+        self.indicator.set_base("alarm")
+        try:
+            result = subprocess.run(POWEROFF, capture_output=True, text=True, timeout=30)
+            error = None if result.returncode == 0 else (result.stderr.strip() or f"exit code {result.returncode}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            error = str(exc)
+        if error:  # e.g. pi/system/cats-poweroff.sudoers is not installed
+            log(f"power-off failed: {error}")
+            self.indicator.set_base("ready" if self.ready else "starting")
+            self.indicator.pattern("refused")
 
     def start_thread(self, loop) -> threading.Thread:
         def run():
@@ -366,6 +486,10 @@ class App:
             self.picam2.close()
         if self.server:
             self.server.server_close()
+        if self.exit_code and self.indicator.led is not None:  # stopped on an error: show it before the LED goes off
+            self.indicator.set_base("alarm")
+            time.sleep(ALARM_S)
+        self.indicator.close()
         log(f"stopped (exit code {self.exit_code})")
 
     # --- worker threads ---
@@ -446,11 +570,29 @@ class App:
                 log(f"{stop_reason}: the CPU drops to 600 MHz in each dip and a brownout reset may follow")
                 self.stop(2, stop_reason)
                 return
+            if not self.ready:
+                self.check_ready()
             if now >= next_log:
                 log(self.status_line())
                 next_log += LOG_EVERY_S
             if self.stopping.wait(MONITOR_S):
                 return
+
+    def check_ready(self):
+        """Monitor thread: enable captures once the first detection is done and the clock is synchronised."""
+        clock_synced = not self.args.wait_for_clock or CLOCK_SYNCED.exists()
+        with self.cond:
+            if clock_synced and not self.clock_synced:
+                log("clock synchronised" if self.args.wait_for_clock else "clock: not checked (--no-wait-for-clock)")
+            self.clock_synced = clock_synced
+            if not clock_synced or self.detected_frame is None:
+                return
+            self.ready = True
+            self.session = datetime.now().astimezone().isoformat(timespec="seconds")  # groups this run's captures
+            if self.args.capture_every:
+                self.next_timed = time.perf_counter() + self.args.capture_every * 60
+        self.indicator.set_base("ready")
+        log(f"ready: captures enabled, session {self.session}")
 
     def save_loop(self):
         while not self.stopping.is_set():
@@ -462,7 +604,10 @@ class App:
                     continue
                 self.next_timed = time.perf_counter() + self.args.capture_every * 60
                 request = CaptureRequest("timer")
-            request.finish(self.save_capture(request.source))
+            result = self.save_capture(request.source)
+            if request.source != "timer":  # the LED answers presses (and page clicks), not the timer
+                self.indicator.pattern("saved" if result["status"] == "saved" else "refused")
+            request.finish(result)
         while True:  # answer requests that came in while stopping, so no web request waits for nothing
             try:
                 self.capture_requests.get_nowait().finish({"status": "stopping", "message": "the app is stopping"})
@@ -490,8 +635,9 @@ class App:
                 status, message = "too_soon", f"at most one capture per {args.capture_min_interval:g} s"
             elif blocked:
                 status, message = "disk_limit", f"captures paused: {blocked}"
-            elif self.detected_frame is None:
-                status, message = "not_ready", "no detection yet"
+            elif not self.ready:
+                status, message = "not_ready", ("waiting for the clock to synchronise" if not self.clock_synced
+                                                else "no detection yet")
             else:
                 status, message = "saved", None
                 frame, frame_time, metadata, detections = self.detected_frame
@@ -516,6 +662,7 @@ class App:
             "image": f"{stem}.jpg",
             "time": taken.isoformat(timespec="milliseconds"),
             "source": source,
+            "session": self.session,  # when this run of the app enabled captures (one per power-on / camera spot)
             "width": frame.shape[1], "height": frame.shape[0],
             "frame_age_ms": round((now - frame_time) * 1000),  # frame captured -> capture requested
             "camera": {key: metadata[key] for key in CAMERA_KEYS if key in metadata},
@@ -647,6 +794,10 @@ class App:
                            "samples": self.samples, "sample_every_s": MONITOR_S},
                 "memory": self.memory,
                 "captures": {
+                    "ready": self.ready,
+                    "clock": ("synchronised" if self.clock_synced else "waiting for NTP") if self.args.wait_for_clock
+                             else "not checked",
+                    "session": self.session,
                     "saved": self.capture_count,  # this run
                     "requests": dict(self.capture_sources), "rejected": dict(self.capture_rejected),
                     "last": self.last_capture,
@@ -654,6 +805,7 @@ class App:
                     "free_mb": round(self.disk_free / 1e6) if self.disk_free is not None else None,
                     "paused": self.capture_blocked(),
                     "button": self.button_state,
+                    "led": self.led_state,
                     "every_min": self.args.capture_every,
                     "next_timed_in_s": round(self.next_timed - now) if self.next_timed is not None else None,
                 },
@@ -724,12 +876,17 @@ const cats = dets => dets.map(x => `${esc(x.class)} ${f(x.score, 2)}`).join(", "
 let lastFile = null;
 function showCaptures(c) {
   const rows = [
+    ["Ready", c.ready ? `yes, session ${esc(c.session)}`
+                      : `<span class="warn">no: ${c.clock === "waiting for NTP" ? "waiting for the clock (NTP)"
+                                                                               : "starting"}</span>`],
     ["Saved", `${c.saved} this run; ${c.files} on the Pi (${f(c.mb, 1)} MB), ${f(c.free_mb)} MB free` +
               (c.paused ? `<br><span class="warn">paused: ${esc(c.paused)}</span>` : "")],
     ["Last", c.last ? `${c.last.time.slice(11, 19)} ${esc(c.last.source)}: ${cats(c.last.detections)}` : "none"],
     ["Rejected", Object.entries(c.rejected).map(([k, n]) => `${esc(k)} ${n}`).join(", ") || "none"],
     ["Button", esc(c.button)],
-    ["Timer", c.every_min ? `every ${c.every_min} min, next in ${f(c.next_timed_in_s / 60, 1)} min` : "off"],
+    ["LED", esc(c.led)],
+    ["Timer", !c.every_min ? "off" : `every ${c.every_min} min, ` + (c.next_timed_in_s == null ? "starts when ready"
+                                     : `next in ${f(c.next_timed_in_s / 60, 1)} min`)],
   ];
   document.getElementById("captures").innerHTML = table(rows);
   const file = c.last ? c.last.file : null;
@@ -903,6 +1060,13 @@ def main():
     captures.add_argument("--button-pull", choices=["up", "down"], default="up",
                           help="internal pull: up for a button to GND (the wiring on our Pi), down for one to 3.3 V")
     captures.add_argument("--button-bounce-ms", type=float, default=50, help="button debounce time in ms; 0 = off")
+    captures.add_argument("--button-hold-s", type=float, default=5, metavar="S",
+                          help="holding the button S seconds powers the Pi off (short presses then capture on "
+                               "release); 0 = no power-off, capture on press")
+    captures.add_argument("--led-pin", type=int, default=24,
+                          help="GPIO (BCM numbering) of the status LED (220 ohm to GND); 0 = no LED")
+    captures.add_argument("--wait-for-clock", action=argparse.BooleanOptionalAction, default=True,
+                          help=f"no captures until the clock is NTP-synchronised ({CLOCK_SYNCED} exists)")
     args = parser.parse_args()
     if not 1 <= args.stream_fps <= 40:
         parser.error("--stream-fps must be between 1 and 40 (the 1640x1232 sensor mode tops out at ~41 fps)")

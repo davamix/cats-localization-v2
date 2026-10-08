@@ -20,7 +20,8 @@ Always uploads pi/ and requirements-pi.txt to the project folder on the Pi (PI_P
 A run name is read from runs/train/<run>/weights/best_ncnn_model and deployed as models/<run>. A folder is deployed
 under its own name without the `_ncnn_model` suffix (`.../<run>/weights/best_ncnn_model` also becomes models/<run>).
 Only the files pi/detector.py needs are uploaded. pi/, each models/<name> and images/<set> are replaced as a whole, so
-files deleted locally do not linger on the Pi. Nothing is installed.
+files deleted locally do not linger on the Pi. Nothing is installed. If the app runs as the cats-app service
+(pi/system/install.sh), it keeps running the old code until `sudo systemctl restart cats-app`; the script says so.
 """
 import argparse
 import posixpath
@@ -114,6 +115,10 @@ def main():
                             "echo; df -h --output=avail . | tail -1", echo=False)
         deployed, free = (listing.splitlines() + ["", ""])[:2]
         print(f"on the Pi: models [{deployed.strip() or 'none'}], {free.strip()} free")
+        _, service = pi.run("systemctl is-active cats-app", echo=False)
+        if service.strip() == "active":
+            print("cats-app service is running the old code: sudo systemctl restart cats-app "
+                  "(and sudo bash pi/system/install.sh after changing pi/system/)")
 
 
 if __name__ == "__main__":

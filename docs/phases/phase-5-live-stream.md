@@ -68,7 +68,7 @@ reset. It then prints a summary that includes the memory trend in MiB/h. `--summ
 - [x] Soak test, 35 min: no crash, no memory leak (+0.25 MiB/h).
 - [ ] Optional: a `systemd` service so the app starts on boot. **Skipped for now** (user decision 2026-10-03:
       phases 6/7 need the camera and port 8000, and `--threads 1` is a temporary power workaround). A ready
-      unit is in the handover notes.
+      unit is in the handover notes. **Done in phase 6** (2026-10-08): `pi/system/cats-app.service`, installed.
 
 ## Done when
 
@@ -141,7 +141,8 @@ reset. It then prints a summary that includes the memory trend in MiB/h. `--summ
   - the pipe ~11 ms per detection (pickled 0.9 MB frame; shared memory would remove it);
   - Wi-Fi bandwidth (~4.7 Mbit/s per viewer at 15 fps, quality 80).
   - The hardware JPEG encoder + boxes drawn in the browser (phase 7 plan) would remove the drawing/JPEG cost.
-- **systemd unit** (not installed; untested). `/etc/systemd/system/cats-app.service`, then
+- **systemd unit** (draft; superseded 2026-10-08 by [pi/system/cats-app.service](../../pi/system/cats-app.service),
+  installed with `pi/system/install.sh`, see phase 6). `/etc/systemd/system/cats-app.service`, then
   `sudo systemctl daemon-reload && sudo systemctl enable --now cats-app`:
 
   ```ini

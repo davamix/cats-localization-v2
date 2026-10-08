@@ -7,6 +7,21 @@ Metrics and benchmarks for the cats detector. Newest phase at the top of each se
 Capture tooling only so far; no retraining yet. Same Pi, model and supply as phase 5, but the Pi was moved to
 another room that morning.
 
+### Collection mode on the Pi (2026-10-08)
+
+The app as the `cats-app` systemd service (2 ncnn threads, no timer, no viewer), 5.1 V adapter, button on GPIO 25 and
+a red LED on GPIO 24 (220 Ω).
+
+| | |
+|---|---|
+| Button + LED test (`pi/button_test.py --led-pin 24`) | 8 / 8 presses, 16 clean edges, shortest gap 102 ms, 0 edges while untouched; the LED lit on every press (user) |
+| Captures | 4 saved in the first session (LED on 1 s each), a quick second press refused (3 blinks); 1 saved after the re-plug; 70–122 KB, frames 262–330 ms old |
+| Long press (5 s) | `systemctl poweroff` through the sudoers rule → SIGTERM → app stopped with exit code 0 in 5 s; a normal `systemctl stop` takes 2.8 s |
+| Boot → ready | ~75 s: the service started ~16 s after boot, the app was up ~32 s later (slower than by hand: the rest of the system was still booting), then it waited ~27 s for the first NTP sync. Until the sync the clock was ~38 s behind (the time the Pi was off), so the app's first log lines of that boot are ~38 s early |
+| Detection | 4.3 per second, inference 213 ms, boxes 255–265 ms behind the video |
+| Temperature | 59.1 °C after 1 min, 63–67 °C at 2–5 min, 68.8–69.8 °C at 6–11 min; 1200 MHz, throttled 0x0 throughout |
+| Memory | RSS app 166–178 + detector 184–185 MiB, ~590 MiB available |
+
 ### Push button (GPIO 25 to GND, internal pull-up, gpiozero 2.0.1 + lgpio)
 
 [pi/button_test.py](../pi/button_test.py) logs every edge with the kernel's event timestamp. The user left the button

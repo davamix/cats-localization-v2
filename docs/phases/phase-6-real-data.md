@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | In progress: capture tooling, download and labelling tools done; collection and labelling next |
-| **Last updated** | 2026-10-06 |
+| **Status** | In progress: capture tooling (autostart, button, LED), download and labelling tools done; collection and labelling next |
+| **Last updated** | 2026-10-08 |
 | **Depends on** | Phase 5 |
 
 ## Goal
@@ -18,6 +18,11 @@ dataset was taken with a different camera, has one cat per image and no empty sc
 - [x] Capture tool on the Pi, inside the live app (it owns the camera): button, `POST /capture` / Capture button on
       the page, optional timer. Saves the raw frame + the model's detections as pre-labels
       ([pi/app.py](../../pi/app.py), design below). Tested on the Pi: 19 captures from all three sources.
+- [x] **Collection mode** (2026-10-08): the app starts at boot (systemd service `cats-app`,
+      [pi/system/](../../pi/system/)); a red **status LED** on GPIO 24 (physical pin 18, 220 Ω to GND) shows
+      starting / ready / saved / refused; **holding the button 5 s powers the Pi off** cleanly; captures wait until the
+      clock is NTP-synchronised; each capture records its session (one per power-on = camera spot). Timer off: all
+      pictures by hand (user decision). Tested on the Pi including a power-off and re-plug.
 - [x] Download the captures to the PC: [scripts/pull_captures.py](../../scripts/pull_captures.py) →
       `data/pi-camera/captures/<day>/` (not in git; the user decides what goes into the Drive zip).
 - [x] Annotation tool: **Label Studio** (user decision 2026-10-04; 1.23 running locally on the PC at
@@ -41,7 +46,7 @@ dataset was taken with a different camera, has one cat per image and no empty sc
 
 - The Pi-camera test set exists and the new model beats `v0.1.0` on it.
 
-## Capture design (as built, 2026-10-04)
+## Capture design (as built 2026-10-04; collection mode 2026-10-08)
 
 - **What is saved**: the 640×480 frame the detector sees (full-field-of-view sensor mode scaled by the ISP), as a
   JPEG at quality 95 (user decision; 29–107 KB). No higher-resolution still: that needs a camera mode switch, which
@@ -61,16 +66,53 @@ dataset was taken with a different camera, has one cat per image and no empty sc
   Both files are written to a hidden `.<name>.part` file, synced to disk and renamed; the JSON after the image.
 - **Requests**: the button callback (gpiozero's thread) only queues a request; a new **save thread** takes requests
   and the timer, applies the limits and writes the files. `POST /capture` waits for the result: 201 saved,
-  429 too soon, 503 no detection yet / stopping, 507 disk limit, 504 no answer in 5 s.
+  429 too soon, 503 not ready (starting, or the clock not synchronised yet) / stopping, 507 disk limit, 504 no answer
+  in 5 s.
+- **Button**: with `--button-hold-s 5` (default) a short press takes the capture **on release**, so a long press
+  doesn't also take one; holding it 5 s runs `sudo -n /usr/bin/systemctl poweroff` (allowed without a password by
+  [pi/system/cats-poweroff.sudoers](../../pi/system/cats-poweroff.sudoers), nothing else), and systemd then stops the
+  app with SIGTERM like any service. `--button-hold-s 0` = capture on press, no power-off.
+- **Clock**: the Pi has no clock battery. After a power-on, systemd-timesyncd restores the time saved at the last
+  shutdown, so the clock is behind by however long the Pi was off, until the first NTP sync over Wi-Fi (~75 s after
+  boot in the 2026-10-08 test). A capture in that window would get a wrong date and land in the wrong day (and
+  split). So captures start only when `/run/systemd/timesync/synchronized` exists (`--wait-for-clock`, default on;
+  `--no-wait-for-clock` to skip). Without Wi-Fi the app never becomes ready.
+- **Ready** = the first detection is done and the clock is synchronised (checked every 2 s by the monitor thread).
+  At that moment the app starts the session: `session` in each capture's JSON is that time (ISO 8601), so captures
+  from one power-on (one camera spot) can be grouped.
+- **LED** (`--led-pin 24`, gpiozero `LED`, 0 = none): **slow blink** = starting or waiting for the clock; **off** =
+  ready; **on 1 s** = capture saved (button or page); **3 quick blinks** = capture refused (too soon, not ready, disk
+  limit, or a failed power-off); **fast blink** = powering off, or the app stopping on an error (5 s before it exits
+  with code 1 or 2). It goes off when the app exits. Timer captures don't flash it.
 - **Limits**: at most one capture per `--capture-min-interval` (1 s, any source); none when `captures/` holds more than
   `--capture-max-mb` (1000) or the card has less than `--capture-min-free-mb` (500 MB) free ("paused" on the page).
-- **Timer**: `--capture-every MIN` (default 0 = off). At 10 min that is 144 images/day, ~10 MB/day.
+- **Timer**: `--capture-every MIN` (default 0 = off; starts when the app is ready). At 10 min that is 144 images/day,
+  ~10 MB/day. Not used: the service runs without it (user decision 2026-10-08: all pictures by hand).
 - **Page / stats**: a Capture button, "N this run; M on the Pi (MB), free MB", the last capture (time, source,
-  pre-labels) with a thumbnail (`/captures/last.jpg`), rejected requests, button state, timer. `/stats` has the
-  same in `captures`. The status line in the log ends with the capture count.
-- **GPIO**: `--button-pin 25` (0 = no button), `--button-pull up` (button to GND), `--button-bounce-ms 50`. gpiozero is
-  imported only in the app process (like picamera2). If the pin can't be opened, the app logs it and runs without
-  the button. Shutdown closes the button first.
+  pre-labels) with a thumbnail (`/captures/last.jpg`), rejected requests, button and LED state, timer, and a Ready
+  row (session, or what it waits for). `/stats` has the same in `captures` (`ready`, `clock`, `session`, ...). The
+  status line in the log ends with the capture count; log lines carry the date.
+- **GPIO**: `--button-pin 25` (0 = no button), `--button-pull up` (button to GND), `--button-bounce-ms 50`,
+  `--button-hold-s 5`, `--led-pin 24`. gpiozero is imported only in the app process (like picamera2). If a pin
+  can't be opened, the app logs it and runs without the button / LED. Shutdown closes the button first and the LED
+  last.
+- **Autostart**: [pi/system/cats-app.service](../../pi/system/cats-app.service) runs
+  `.venv/bin/python pi/app.py` (2 threads, no timer) as user `pi` from `~/cats-localization-v2` at boot. It appends
+  the output to `results/phase6/service.log`, because the journal is lost at every power-off. It restarts the app
+  10 s after a failure, but not after exit code 2 (under-voltage stop: no restart into a brownout), and gives up
+  after 5 failed starts in 10 minutes. [pi/system/install.sh](../../pi/system/install.sh) installs the unit and the
+  sudoers rule (`visudo` check first), enables and (re)starts the service; `--remove` undoes it.
+
+## Collection workflow (with the button)
+
+1. Put the Pi at the spot and plug it in. After ~30 s the LED **blinks slowly** (the app is starting, then waiting
+   for the clock); when it goes **off**, the app is ready (~1–1.5 min after plugging in).
+2. **Press** the button for each picture: the LED lights for **1 s** when it's saved. **3 quick blinks** = not saved
+   (pressed within 1 s of the last picture, or not ready yet). The page `http://192.168.2.112:8000/` shows the
+   live view to aim the camera, the last capture and the Ready state.
+3. To move: **hold the button 5 s**. The LED blinks fast, then the Pi shuts down; unplug when its green light has
+   stopped flashing (~10–20 s). Plug in at the new spot: a new session starts.
+4. Every few days: `python scripts/pull_captures.py` on the PC, then label (below).
 
 ## Collection plan
 
@@ -81,11 +123,11 @@ image takes seconds when the model is right).
 | Category | Train | Test | How to get them |
 |---|---|---|---|
 | Blacky alone, **near** (box ≥ ~25% of the frame width) | 40 | 10 | button |
-| Blacky alone, **far** (box < ~15% of the width, e.g. on the sofa back across the room) | 60 | 15 | button, timer |
+| Blacky alone, **far** (box < ~15% of the width, e.g. on the sofa back across the room) | 60 | 15 | button |
 | Niche alone, near | 40 | 10 | button |
-| Niche alone, far (incl. the cat-tree hammock, the floor across the room) | 60 | 15 | button, timer |
-| **Both cats** in the frame | 50 | 15 | button whenever it happens; timer while they sleep together |
-| **Empty scenes** (no cat) | 80 | 25 | timer; button for the hard ones |
+| Niche alone, far (incl. the cat-tree hammock, the floor across the room) | 60 | 15 | button |
+| **Both cats** in the frame | 50 | 15 | button, whenever it happens (e.g. while they sleep together) |
+| **Empty scenes** (no cat) | 80 | 25 | button: a few per spot and lighting, plus the hard negatives below |
 | *(middle distances come on their own)* | | | |
 
 - **Hard negatives** among the empty scenes: dark objects (the black leather sofa: "Blacky 0.66" on 2026-10-04;
@@ -96,11 +138,11 @@ image takes seconds when the model is right).
   temperature, so the mix can be checked before labelling. Don't bother with lights-off night: the camera has no IR.
 - **Camera positions**: most images (≥ 60%) from the position(s) where the camera will live, plus 2–3 other
   positions/rooms so the model doesn't learn one background. Keep the camera roughly level, as when deployed. The
-  2026-10-04 test captures were hand-held in several rooms after the Pi moved.
-- **Pace**: run the app with `--capture-every 10` during collection days (~144 timer images/day) and press the button
-  for the interesting moments. Label every button capture; from the timer captures, label those with cats (by
-  pre-label or by eye) and **at most ~1 empty image per hour and position** (consecutive empty timer frames are
-  near-duplicates).
+  2026-10-04 test captures were hand-held in several rooms after the Pi moved. Each power-on is one session in the
+  JSON files, so the spots can be counted.
+- **Pace**: all pictures by hand with the button (user decision 2026-10-08), several per session. Label every
+  capture. The timer (`--capture-every`) stays available if empty scenes or lighting changes fall short; then label
+  at most ~1 empty timer image per hour and spot (consecutive empty frames are near-duplicates).
 - **Near-duplicates**: captures seconds apart of a still cat are almost the same image. In train, prefer ≥ 30 s or a
   visible change between images of the same scene.
 
@@ -115,7 +157,9 @@ image takes seconds when the model is right).
 - Before training, check that the test days cover every category in the table (both cats, far cats, empty scenes,
   each lighting). If one is missing, capture it on a test day (a dedicated session) rather than borrowing from train
   days.
-- 2026-10-04 (19 hand-held test captures) counts as a **train** day.
+- 2026-10-04 (19 hand-held test captures) and 2026-10-08 (5 captures from the autostart test, plus whatever is
+  collected later that day) count as **train** days and are not numbered: the 1st collection day is the next day
+  with captures.
 - Optional: one camera position that only appears on test days, to measure generalisation to a new view.
 
 ## Labelling workflow (Label Studio)
@@ -148,7 +192,7 @@ image takes seconds when the model is right).
    names or e-mails) — commit that file. `tools/via_to_yolo.py` reads it like the 2020 polygons; VIA keys images by
    name + size and the day folder is found from that.
 
-## Results (2026-10-04; details in [results.md](../results.md#phase-6--real-camera-data-2026-10-04))
+## Results (2026-10-04 and 2026-10-08; details in [results.md](../results.md#phase-6--real-camera-data-2026-10-04))
 
 - **Button**: no floating (0 edges in 15–30 s untouched with the pull-up), all 8 presses seen in both runs. Without
   debounce, 3 of 8 releases bounced (2–3 edges within 0.1–0.4 ms); with lgpio's 50 ms debounce, 16 clean edges
@@ -163,14 +207,35 @@ image takes seconds when the model is right).
 - **Power after the move**: with the Pi in its new room, the same `--threads 1` app + 1 viewer had **repeated
   4–16 s under-voltage dips**: after 5 clean minutes, 14 dips in the last 4 minutes (600 MHz during each), where
   the phase 5 soak had 2 dips in 35 min. No sustained under-voltage, so the 30-s stop never triggered, and no reset.
+- **2026-10-08, button + LED** (rewired: LED on GPIO 24 through 220 Ω; the user had first put the LED in series with
+  the button, which can't work: ~0.03 mA through the pull-up, and the pin can't fall below the LED's forward
+  voltage): 8 of 8 presses, 16 clean edges (shortest gap 102 ms), no edge while untouched, the LED lit on every press.
+- **2026-10-08, collection mode on the Pi** (service, 5.1 V adapter, 2 threads, no viewer): the user ran the whole
+  cycle and everything worked as designed: 4 presses saved (LED 1 s each), a second quick press refused (3 blinks),
+  5-s hold → clean power-off (SIGTERM, app stopped with exit code 0, LED off), re-plug → autostart → slow blink →
+  ready → 1 press saved. Boot → ready took ~75 s: the app was up ~48 s after boot, then waited ~27 s for the NTP
+  sync; until then the clock was ~38 s behind (the time the Pi was off). The captures carry the right time and one `session` per power-on.
+- **Temperature, no viewer, 2 threads**: 59.1 °C after 1 min, 68.8–69.8 °C from minute 6 to 11, 1200 MHz, no
+  under-voltage, 4.3 detections/s (inference 213 ms). The detector runs all the time, even when nobody presses.
 
 ## Handover notes
 
-- **Run the app for collection** (on the Pi, from `~/cats-localization-v2`):
-  `(setsid nohup .venv/bin/python pi/app.py --threads 2 --capture-every 10 > results/phase6/app.log 2>&1 < /dev/null &)`
-  (`--threads 2` since 2026-10-06, see below; it was `--threads 1`).
-  Stop it with `pkill -TERM -f "[p]i/app.py"` (the brackets stop the pattern from matching the shell that runs
-  `pkill` itself: a plain `pkill -f pi/app.py` through `pi_remote.py run` kills its own SSH shell, exit code 127).
+- **The app now runs as the `cats-app` service and starts at boot** (installed and enabled 2026-10-08, user OK;
+  `/etc/systemd/system/cats-app.service` + `/etc/sudoers.d/cats-poweroff`, both from [pi/system/](../../pi/system/)).
+  - Status: `systemctl status cats-app`; log: `results/phase6/service.log` (dated lines, all runs appended).
+  - **Before anything else that needs the camera, port 8000 or GPIO 24/25** (benchmarks, `pi/button_test.py`,
+    `pi/camera_test.py`, a manual `pi/app.py`): `sudo systemctl stop cats-app`; afterwards `sudo systemctl start
+    cats-app`. Through `pi_remote.py run --sudo`.
+  - **After `scripts/deploy.py`**, the service keeps the old code until `sudo systemctl restart cats-app` (deploy.py
+    prints a reminder); after changing a file in `pi/system/`, run `sudo bash pi/system/install.sh` again.
+  - Undo: `sudo bash pi/system/install.sh --remove` (removes both files in /etc, ask the user first).
+  - `pi_remote.py run` crashes on non-ASCII output (e.g. the `→` printed by `systemctl enable`) on the Windows
+    console: set `PYTHONIOENCODING=utf-8`.
+  - A manual run is still possible with the service stopped:
+    `(setsid nohup .venv/bin/python pi/app.py > results/phase6/app.log 2>&1 < /dev/null &)`, stopped with
+    `pkill -TERM -f "[p]i/app.py"` (the brackets stop the pattern from matching the remote shell itself).
+- **The user collects by hand** (no timer) and moves the Pi between spots with the long-press power-off; see the
+  collection workflow above. Each power-on is one `session`.
 - **Power first**: check the power path in the new room before long timer runs (same charger + USB-C → micro-USB
   adapter? an extension lead or a longer cable now?). The dips started with a viewer connected; the stream costs
   ~0.4 core, so for long collection runs **close the page** when nobody watches. At ≥ 10 s of under-voltage or
@@ -187,18 +252,23 @@ image takes seconds when the model is right).
 - **Watch the temperature on long runs** (the user's open point for 2 threads).
   - The 10-minute live test reached 74.7 °C and was still rising slowly (+0.3 °C/min at the end), so it's not known
     yet where it settles. The firmware caps the clock at 80 °C.
-  - The app logs °C and MHz every minute in `results/phase6/app.log`, and `/stats` has them live. For a log that
+  - 2026-10-08, no viewer: 68.8–69.8 °C after 6–11 min, flat at 1200 MHz. With a viewer (2026-10-06) 74.7 °C.
+  - The app logs °C and MHz every minute in `results/phase6/service.log`, and `/stats` has them live. For a log that
     survives a reset, run `pi/soak.py` next to the app (sampling the app) or `pi/watch.sh`.
   - In the first long runs, check the peak temperature and any `ARM frequency capped` / clock < 1200 MHz samples.
   - If it gets close to 80 °C: close the stream page when nobody watches (~0.4 core), lower `--stream-fps`, improve
     the cooling, or go back to `--threads 1`.
-- **Disk**: 2.5 GB free on the Pi. Timer captures at 10 min are ~10 MB/day; pull them to the PC regularly. Nothing
+  - Bigger lever (not built): the detector runs nonstop although captures need it only at a press. Detecting only
+    while someone watches, plus once on demand at a press (~0.25 s), would leave the Pi almost idle between presses.
+- **Disk**: 2.5 GB free on the Pi; a button capture is ~60–120 KB, so space is no issue without the timer. Nothing
   deletes captures on the Pi (neither the app nor `pull_captures.py`); delete old days by hand after pulling, if
   needed, inside `~/cats-localization-v2/captures/`.
 - **Captures may show people** (the user's hand is in one 2026-10-04 image). They stay out of git (`data/**` is
   ignored except the `cats-annotations.json` files); the user decides what goes into the Drive zip.
 - **lgpio** leaves a 0-byte FIFO `.lgd-nfy0` in the working directory (`~/cats-localization-v2`); harmless, it is
   reused at every start.
+- **GPIO wiring** (2026-10-08): button GPIO 25 (pin 22) → GND (pin 20), no resistor; red LED GPIO 24 (pin 18) →
+  220 Ω → LED → GND (pin 20). GPIO 24 is the only output.
 - **Pi time zone** is Europe/Madrid since 2026-10-04 (user decision; it was Europe/London), so Pi logs and capture
   names match the PC's clock. The Pi was unplugged and moved to another room at ~10:26 that day (the boot time
   changed; not a fault).
@@ -206,8 +276,10 @@ image takes seconds when the model is right).
   was started without local-file serving, so restart it with the two environment variables above before importing.
   The import/export converters were tested with a simulated export only: **check the first real export** (box
   positions in `cats-annotations.json` vs the image, e.g. with `tools/via_to_yolo.py` + `tools/visualize_labels.py`).
-- **PC tests of the app**: a stub `picamera2` (frames from two validation images) and a stub `gpiozero` (a Button
-  that presses itself) were used from the session scratchpad (not in git); they covered not-ready, too-soon, disk
-  limit, button failure and `--button-pin 0`.
-- **Next**: collect (plan above) with the timer + button over ~1–2 weeks, label in batches, then build the combined
-  dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days.
+- **PC tests of the app**: a stub `picamera2` (frames from validation images; can fail after N frames) and a stub
+  `gpiozero` (a Button that presses and holds itself on a schedule, an LED that prints its changes) were used from
+  the session scratchpad (not in git), with a fake clock-sync file and a harmless power-off command. They covered
+  not-ready (clock / first detection), too-soon, disk limit, button failure, `--button-pin 0`, the LED states, the
+  long press (success and failure) and the 5-s alarm on an error exit.
+- **Next**: the user collects (plan above) with the button over ~1–2 weeks; label in batches, then build the
+  combined dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days.
