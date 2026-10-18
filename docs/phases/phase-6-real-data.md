@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | In progress: capture tooling (autostart, button, LED), download and labelling tools done; collection and labelling next |
-| **Last updated** | 2026-10-08 |
+| **Last updated** | 2026-10-18 |
 | **Depends on** | Phase 5 |
 
 ## Goal
@@ -36,6 +36,13 @@ dataset was taken with a different camera, has one cat per image and no empty sc
       negatives (YOLO uses images with empty label files as background), day / evening / lamp light, 2–3 camera
       positions.
 - [ ] Label them in Label Studio (import, review, export, convert, commit `data/pi-camera/captures/cats-annotations.json`).
+      **First batch done 2026-10-18**: all 105 captures of 2026-10-04 to 2026-10-15 reviewed (91 submitted, 14
+      skipped), exported, converted and checked; the converters now work on a real export.
+- [x] **Tooling for the routine** (2026-10-18): Claude Code skills `/labelstudio-import`, `/labelstudio-export` and
+      `/pi` in `.claude/skills/`, a `CLAUDE.md`, the Label Studio guide [docs/label-studio.md](../label-studio.md),
+      `tools/label_report.py` (counts per split, review changes, deployed model vs labels, contact sheets),
+      `tools/pi_camera_splits.py` (the day-split rule in code), `scripts/pi_status.py` (Pi status in one login) and
+      `captures_to_labelstudio.py --new-only` (only pictures not in Label Studio yet).
 - [ ] Keep a held-out **Pi-camera test set** that is never used for training (split by whole days, see below).
 - [ ] Build the combined dataset (2020 + Pi-camera train days; Pi-camera validation and test days).
 - [ ] Retrain (phase 2 scripts), re-export and verify (phase 3), redeploy (phase 4), and compare against `v0.1.0`
@@ -160,39 +167,28 @@ image takes seconds when the model is right).
 - 2026-10-04 (19 hand-held test captures) and 2026-10-08 (5 captures from the autostart test, plus whatever is
   collected later that day) count as **train** days and are not numbered: the 1st collection day is the next day
   with captures.
+- By this rule (as of 2026-10-18): 2026-10-09 = day 1 (train), 2026-10-12 = day 2 (**validation**), 2026-10-15 =
+  day 3 (**test**). The test day so far has no image with both cats: capture both together on a later test day
+  (the 6th collection day).
 - Optional: one camera position that only appears on test days, to measure generalisation to a new view.
 
 ## Labelling workflow (Label Studio)
 
-1. **Start Label Studio with local-file serving** (needed once per start; the images stay on disk). In PowerShell:
+The full setup and routine are in **[docs/label-studio.md](../label-studio.md)**: the Docker container (data folder
+`C:\Users\<user>\captures` mounted as `/label-studio/data`, document root `/label-studio/data`), the project
+settings, the task file format, the batch routine, export and conversion, and troubleshooting. In short:
 
-   ```powershell
-   $env:LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED = "true"
-   $env:LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT = "F:\Development\cats-localization-v2\data"
-   label-studio start
-   ```
+1. Each batch: `python scripts/pull_captures.py`, then
+   `python tools/captures_to_labelstudio.py --days <YYYY-MM-DD ...> --copy-to $env:USERPROFILE/captures`, and import
+   the task file it writes (`data/pi-camera/labelstudio/<days>.json`) with Import → Upload Files → **Import**. Import
+   each day once.
+2. Review: one tight box per visible cat; **submit** every image wanted in the dataset, including empty scenes;
+   **skip** unusable ones.
+3. Export the whole project as JSON to `data/annotations/` (git-ignored), run
+   `python tools/labelstudio_to_via.py data/annotations/<export>.json`, check, and commit
+   `data/pi-camera/captures/cats-annotations.json`.
 
-   Keep Label Studio's own data folder out of the repository (or in the git-ignored `/captures/` at the repo root,
-   where the 2026-10-04 instance keeps it).
-2. **Create one project** for all Pi-camera captures (e.g. "Cats Pi camera"):
-   - Settings → Labeling Interface → Code: paste [tools/labelstudio_config.xml](../../tools/labelstudio_config.xml)
-     (`1` = Blacky, `2` = Niche).
-   - Settings → Cloud Storage → Add Source Storage → **Local files**, absolute path
-     `F:\Development\cats-localization-v2\data\pi-camera\captures`. Check the connection, but **don't sync** (sync
-     would add the images again as tasks without pre-labels).
-   - Settings → Annotation: turn on using predictions to pre-label tasks, so each task opens with the model's boxes.
-3. **Each batch**: `python scripts/pull_captures.py`, then
-   `python tools/captures_to_labelstudio.py --days <YYYY-MM-DD ...>` and Import the file it writes
-   (`data/pi-camera/labelstudio/<days>.json`). Import each day once.
-4. **Review**: fix, add or delete boxes; one box per visible cat, tight around the visible part. **Submit every
-   task you want in the dataset, including empty scenes** (submitted without boxes = background image). **Skip**
-   images that should not be used (blurred, the camera pointing at a wall, privacy).
-5. **Export** → JSON, then `python tools/labelstudio_to_via.py <export>.json`. It writes
-   `data/pi-camera/captures/cats-annotations.json` (VIA 2.0.8 format with `rect` regions, only reviewed tasks, no user
-   names or e-mails) — commit that file. `tools/via_to_yolo.py` reads it like the 2020 polygons; VIA keys images by
-   name + size and the day folder is found from that.
-
-## Results (2026-10-04 and 2026-10-08; details in [results.md](../results.md#phase-6--real-camera-data-2026-10-04))
+## Results (2026-10-04 to 2026-10-18; details in [results.md](../results.md#phase-6--real-camera-data-2026-10-04))
 
 - **Button**: no floating (0 edges in 15–30 s untouched with the pull-up), all 8 presses seen in both runs. Without
   debounce, 3 of 8 releases bounced (2–3 edges within 0.1–0.4 ms); with lgpio's 50 ms debounce, 16 clean edges
@@ -217,6 +213,11 @@ image takes seconds when the model is right).
   sync; until then the clock was ~38 s behind (the time the Pi was off). The captures carry the right time and one `session` per power-on.
 - **Temperature, no viewer, 2 threads**: 59.1 °C after 1 min, 68.8–69.8 °C from minute 6 to 11, 1200 MHz, no
   under-voltage, 4.3 detections/s (inference 213 ms). The detector runs all the time, even when nobody presses.
+- **2026-10-18, first labelled batch**: 91 images (10 empty scenes, 76 with one cat, 5 with both), 44 Blacky and 42
+  Niche boxes, 44 of the 86 boxes narrower than 15% of the frame. Reviewed by hand (median 6.6 s per image): in 47
+  images the model had no box at all and the user drew them. **v0.1.0 against these labels** (its own pre-labels on
+  the same frames, IoU ≥ 0.5): at the app's 0.5 it finds **18 of 86 cats (21%)** with 7 false boxes; at 0.25, 29
+  (34%) with 17 false boxes; never the wrong name. The model mostly fails by missing cats, above all small ones.
 
 ## Handover notes
 
@@ -272,14 +273,41 @@ image takes seconds when the model is right).
 - **Pi time zone** is Europe/Madrid since 2026-10-04 (user decision; it was Europe/London), so Pi logs and capture
   names match the PC's clock. The Pi was unplugged and moved to another room at ~10:26 that day (the boot time
   changed; not a fault).
-- **Label Studio**: 1.23.0 on the PC (port 8080; the app is on port 8000 on the Pi, no conflict). The running instance
-  was started without local-file serving, so restart it with the two environment variables above before importing.
-  The import/export converters were tested with a simulated export only: **check the first real export** (box
-  positions in `cats-annotations.json` vs the image, e.g. with `tools/via_to_yolo.py` + `tools/visualize_labels.py`).
+- **Label Studio** (2026-10-18): 1.23.0 in Docker (`heartexlabs/label-studio:latest`, container `label-studio`,
+  port 8080; the app is on port 8000 on the Pi, no conflict), data folder `C:\Users\<user>\captures` →
+  `/label-studio/data`. The first container had `LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT` set to the Windows path
+  `F:\Development\cats-localization-v2\data`, which doesn't exist inside it, so no image could load; the user
+  re-created it the same day with `/label-studio/data` (command in [docs/label-studio.md](../label-studio.md)).
+  - State on 2026-10-18: project 2 "cats-localization-v2" (labeling config from `tools/labelstudio_config.xml`,
+    Local files storage `/label-studio/data/pi-camera/captures`, not synced) holds **105 tasks** imported from
+    `data/pi-camera/labelstudio/2026-10-04_to_2026-10-15.json` (all captures 2026-10-04 to 2026-10-15), 38 with
+    predictions (48 boxes), pre-labelling on with model version "yolo26n_320_scale0.9 on the Pi (score >= 0.25)".
+    **All 105 reviewed** (91 submitted, 14 skipped). The user exports to `data/annotations/` (git-ignored: the export
+    holds user ids); the first export is `project-2-at-2026-10-18-14-15-8a64e426.json`, converted to
+    `data/pi-camera/captures/cats-annotations.json`. The empty extra projects were deleted. The next import starts
+    at the next capture day (`--days`), so no day is imported twice; export the whole project each time (the
+    converter rebuilds the file from it).
+  - The model list under Settings → Annotation only shows model versions of predictions already in the project:
+    it stays empty until the task file is imported. The project's "Model" section (ML backend) is not needed.
+  - The repo-root `/captures/` folder (git-ignored) is the leftover data folder of the 2026-10-04 instance, unused
+    since; the user decides whether to delete it.
+  - The first real export was checked on 2026-10-18: counts match (the one box drawn on a skipped image is left
+    out, as intended), `tools/via_to_yolo.py` converts the file (91 label files, 10 empty), and every box drawn by
+    `tools/visualize_labels.py` sits on its cat. Dark shapes without a box were checked at full size: the black
+    cat-face cushion on the sofa back and the cat tunnel, no missed cats. Two Niche boxes are only ~20 px wide
+    (Niche's head over the tunnel, 2026-10-15).
 - **PC tests of the app**: a stub `picamera2` (frames from validation images; can fail after N frames) and a stub
   `gpiozero` (a Button that presses and holds itself on a schedule, an LED that prints its changes) were used from
   the session scratchpad (not in git), with a fake clock-sync file and a harmless power-off command. They covered
   not-ready (clock / first detection), too-soon, disk limit, button failure, `--button-pin 0`, the LED states, the
   long press (success and failure) and the 5-s alarm on an error exit.
+- **Routine from now on** (2026-10-18): new pictures → `/labelstudio-import`; after labelling and exporting →
+  `/labelstudio-export`; anything on the Pi → `/pi`. `CLAUDE.md` holds the always-needed context and rules.
+- **Saved idea for later — a `/retrain` skill** (user request 2026-10-18: keep the suggestion until it's needed). Once
+  the retraining pipeline exists and has been run once by hand, turn it into a skill: build the combined dataset (2020
+  photos + Pi-camera train days; Pi-camera val day(s) for `best.pt` and the threshold; test days held out, via
+  `tools/pi_camera_splits.py`) → train (phase 2 scripts) → export to NCNN and verify (phase 3) → compare against
+  `v0.1.0` on the test days only → deploy and restart `cats-app` (`/pi`) → publish a Release when better.
 - **Next**: the user collects (plan above) with the button over ~1–2 weeks; label in batches, then build the
-  combined dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days.
+  combined dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days
+  (baseline on the first test day, 2026-10-15: v0.1.0 finds 1 of 18 cats at 0.5).

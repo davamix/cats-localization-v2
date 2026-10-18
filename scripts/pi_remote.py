@@ -74,6 +74,8 @@ class Pi:
     def sftp(self) -> paramiko.SFTPClient:
         if self._sftp is None:
             self._sftp = self.client.open_sftp()
+            # a stalled reply raises (socket.timeout) instead of hanging forever (seen once on 2026-10-18 under load)
+            self._sftp.get_channel().settimeout(60)
         return self._sftp
 
     def run(self, command: str, sudo: bool = False, echo: bool = True, timeout: float | None = None) -> tuple[int, str]:

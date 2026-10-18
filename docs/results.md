@@ -7,6 +7,35 @@ Metrics and benchmarks for the cats detector. Newest phase at the top of each se
 Capture tooling only so far; no retraining yet. Same Pi, model and supply as phase 5, but the Pi was moved to
 another room that morning.
 
+### First labelled batch: v0.1.0 against human labels (2026-10-18)
+
+All 105 captures of 2026-10-04 to 2026-10-15 reviewed in Label Studio (pre-labels from the Pi, corrected by hand):
+91 submitted, 14 skipped. Converted with `tools/labelstudio_to_via.py`, checked with `tools/via_to_yolo.py` and
+`tools/visualize_labels.py`.
+
+| Day | Images | Empty | Both cats | Boxes | Boxes < 15% of the frame width |
+|---|---|---|---|---|---|
+| 2026-10-04 | 9 | 0 | 0 | 9 | 3 |
+| 2026-10-08 | 5 | 2 | 0 | 3 | 0 |
+| 2026-10-09 | 35 | 3 | 2 | 34 | 13 |
+| 2026-10-12 | 21 | 2 | 3 | 22 | 17 |
+| 2026-10-15 | 21 | 3 | 0 | 18 | 11 |
+| **Total** | **91** | **10** | **5** | **86** (Blacky 44, Niche 42) | **44** |
+
+The pre-labels are v0.1.0's detections on exactly these frames (on the Pi, before JPEG), so they measure the
+deployed model on Pi-camera images. Matched to the human boxes at IoU ≥ 0.5:
+
+| Confidence | Cats found, right name | Wrong name | Missed | False boxes (on empty scenes) |
+|---|---|---|---|---|
+| 0.5 (the live app) | **18 / 86 (21%)** | 0 | 68 | 7 (1) |
+| 0.25 (pre-labels) | 29 / 86 (34%) | 0 | 57 | 17 (3) |
+
+- In 47 of the 91 images the model had no box at all ≥ 0.25 and the user drew every box; 19 images needed edits, 15
+  kept the pre-labels unchanged, 2 had only false boxes (deleted), 8 were empty without pre-labels.
+- The model never mixes up Blacky and Niche; it misses cats, mostly small and far ones (half the boxes are < 15% of
+  the frame width, a size the 2020 photos never had). Not a held-out test: these are all labelled images. The
+  comparison for the new model uses the test days only.
+
 ### Collection mode on the Pi (2026-10-08)
 
 The app as the `cats-app` systemd service (2 ncnn threads, no timer, no viewer), 5.1 V adapter, button on GPIO 25 and

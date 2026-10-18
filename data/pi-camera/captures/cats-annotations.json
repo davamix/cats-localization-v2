@@ -1,0 +1,1675 @@
+{
+ "_via_attributes": {
+  "region": {
+   "Class": {
+    "type": "radio",
+    "description": "",
+    "options": {
+     "Blacky": "",
+     "Niche": ""
+    },
+    "default_options": {}
+   }
+  },
+  "file": {}
+ },
+ "20261004-110848-637_button.jpg69926": {
+  "filename": "20261004-110848-637_button.jpg",
+  "size": 69926,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 292.6,
+     "y": 210.1,
+     "width": 124.1,
+     "height": 186.5
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-110851-834_button.jpg71961": {
+  "filename": "20261004-110851-834_button.jpg",
+  "size": 71961,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 320.4,
+     "y": 216.0,
+     "width": 57.3,
+     "height": 35.5
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-110902-700_button.jpg109273": {
+  "filename": "20261004-110902-700_button.jpg",
+  "size": 109273,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 351.2,
+     "y": 142.0,
+     "width": 102.7,
+     "height": 77.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-111055-742_button.jpg71090": {
+  "filename": "20261004-111055-742_button.jpg",
+  "size": 71090,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 280.1,
+     "y": 338.9,
+     "width": 132.9,
+     "height": 94.6
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-111056-807_timer.jpg63574": {
+  "filename": "20261004-111056-807_timer.jpg",
+  "size": 63574,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 193.1,
+     "y": 352.5,
+     "width": 184.1,
+     "height": 99.9
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-111405-388_button.jpg60929": {
+  "filename": "20261004-111405-388_button.jpg",
+  "size": 60929,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 265.2,
+     "y": 216.5,
+     "width": 105.7,
+     "height": 69.3
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-111410-653_button.jpg71151": {
+  "filename": "20261004-111410-653_button.jpg",
+  "size": 71151,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 413.3,
+     "y": 293.5,
+     "width": 62.9,
+     "height": 32.5
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-111430-583_button.jpg56581": {
+  "filename": "20261004-111430-583_button.jpg",
+  "size": 56581,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 297.3,
+     "y": 339.7,
+     "width": 45.3,
+     "height": 24.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261004-111434-448_button.jpg56689": {
+  "filename": "20261004-111434-448_button.jpg",
+  "size": 56689,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 280.6,
+     "y": 334.5,
+     "width": 142.0,
+     "height": 66.3
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261008-133944-968_button.jpg77508": {
+  "filename": "20261008-133944-968_button.jpg",
+  "size": 77508,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 262.0,
+     "y": 187.5,
+     "width": 128.0,
+     "height": 88.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261008-133952-967_button.jpg77270": {
+  "filename": "20261008-133952-967_button.jpg",
+  "size": 77270,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261008-134002-297_button.jpg74510": {
+  "filename": "20261008-134002-297_button.jpg",
+  "size": 74510,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 317.6,
+     "y": 222.1,
+     "width": 118.4,
+     "height": 58.5
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261008-134012-296_button.jpg124823": {
+  "filename": "20261008-134012-296_button.jpg",
+  "size": 124823,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261008-134234-896_button.jpg71696": {
+  "filename": "20261008-134234-896_button.jpg",
+  "size": 71696,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 355.2,
+     "y": 197.7,
+     "width": 122.1,
+     "height": 84.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111440-652_button.jpg74804": {
+  "filename": "20261009-111440-652_button.jpg",
+  "size": 74804,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 257.5,
+     "y": 136.0,
+     "width": 72.7,
+     "height": 89.8
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111455-117_button.jpg81629": {
+  "filename": "20261009-111455-117_button.jpg",
+  "size": 81629,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 196.4,
+     "y": 154.9,
+     "width": 172.4,
+     "height": 133.9
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111509-512_button.jpg76690": {
+  "filename": "20261009-111509-512_button.jpg",
+  "size": 76690,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 268.0,
+     "y": 210.6,
+     "width": 60.3,
+     "height": 94.3
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111518-378_button.jpg71788": {
+  "filename": "20261009-111518-378_button.jpg",
+  "size": 71788,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 20.1,
+     "y": 100.1,
+     "width": 201.9,
+     "height": 199.4
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111524-645_button.jpg63642": {
+  "filename": "20261009-111524-645_button.jpg",
+  "size": 63642,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 194.9,
+     "y": 99.7,
+     "width": 133.3,
+     "height": 161.0
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111536-508_button.jpg78180": {
+  "filename": "20261009-111536-508_button.jpg",
+  "size": 78180,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 0.6,
+     "y": 1.7,
+     "width": 360.7,
+     "height": 369.3
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111600-641_button.jpg67046": {
+  "filename": "20261009-111600-641_button.jpg",
+  "size": 67046,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 188.2,
+     "y": 69.3,
+     "width": 115.1,
+     "height": 99.3
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111609-508_button.jpg67124": {
+  "filename": "20261009-111609-508_button.jpg",
+  "size": 67124,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 236.0,
+     "y": 137.9,
+     "width": 128.5,
+     "height": 143.0
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111624-841_button.jpg78667": {
+  "filename": "20261009-111624-841_button.jpg",
+  "size": 78667,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 194.7,
+     "y": 28.3,
+     "width": 178.2,
+     "height": 199.6
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111635-710_button.jpg82251": {
+  "filename": "20261009-111635-710_button.jpg",
+  "size": 82251,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 39.8,
+     "y": 110.1,
+     "width": 355.1,
+     "height": 195.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111647-845_button.jpg77047": {
+  "filename": "20261009-111647-845_button.jpg",
+  "size": 77047,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 192.9,
+     "y": 146.7,
+     "width": 121.9,
+     "height": 102.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111711-978_button.jpg68952": {
+  "filename": "20261009-111711-978_button.jpg",
+  "size": 68952,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 218.6,
+     "y": 220.7,
+     "width": 77.4,
+     "height": 123.6
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111723-372_button.jpg87223": {
+  "filename": "20261009-111723-372_button.jpg",
+  "size": 87223,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 275.1,
+     "y": 115.1,
+     "width": 40.6,
+     "height": 81.7
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111730-104_button.jpg71840": {
+  "filename": "20261009-111730-104_button.jpg",
+  "size": 71840,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 269.7,
+     "y": 168.2,
+     "width": 134.1,
+     "height": 126.8
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111739-437_button.jpg59144": {
+  "filename": "20261009-111739-437_button.jpg",
+  "size": 59144,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261009-111745-702_button.jpg73821": {
+  "filename": "20261009-111745-702_button.jpg",
+  "size": 73821,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 312.8,
+     "y": 167.5,
+     "width": 97.4,
+     "height": 67.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111802-631_button.jpg71395": {
+  "filename": "20261009-111802-631_button.jpg",
+  "size": 71395,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 204.5,
+     "y": 212.2,
+     "width": 84.7,
+     "height": 46.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111812-163_button.jpg73904": {
+  "filename": "20261009-111812-163_button.jpg",
+  "size": 73904,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 279.1,
+     "y": 195.4,
+     "width": 149.7,
+     "height": 183.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111828-702_button.jpg69170": {
+  "filename": "20261009-111828-702_button.jpg",
+  "size": 69170,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 176.7,
+     "y": 247.7,
+     "width": 238.9,
+     "height": 202.1
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111846-569_button.jpg73049": {
+  "filename": "20261009-111846-569_button.jpg",
+  "size": 73049,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 254.5,
+     "y": 68.4,
+     "width": 45.8,
+     "height": 59.9
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111905-895_button.jpg96254": {
+  "filename": "20261009-111905-895_button.jpg",
+  "size": 96254,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 409.7,
+     "y": 3.1,
+     "width": 230.2,
+     "height": 476.9
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   },
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 272.1,
+     "y": 203.6,
+     "width": 91.6,
+     "height": 72.7
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-111923-762_button.jpg85874": {
+  "filename": "20261009-111923-762_button.jpg",
+  "size": 85874,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 189.9,
+     "y": 107.8,
+     "width": 46.2,
+     "height": 41.9
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194335-847_button.jpg88234": {
+  "filename": "20261009-194335-847_button.jpg",
+  "size": 88234,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 249.8,
+     "y": 144.2,
+     "width": 49.6,
+     "height": 48.8
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194350-456_button.jpg66808": {
+  "filename": "20261009-194350-456_button.jpg",
+  "size": 66808,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 237.4,
+     "y": 10.7,
+     "width": 166.4,
+     "height": 160.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194402-522_button.jpg100427": {
+  "filename": "20261009-194402-522_button.jpg",
+  "size": 100427,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 229.4,
+     "y": 199.7,
+     "width": 85.8,
+     "height": 84.8
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194416-059_button.jpg88157": {
+  "filename": "20261009-194416-059_button.jpg",
+  "size": 88157,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 214.3,
+     "y": 96.0,
+     "width": 174.9,
+     "height": 169.7
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194426-728_button.jpg83679": {
+  "filename": "20261009-194426-728_button.jpg",
+  "size": 83679,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 204.5,
+     "y": 261.0,
+     "width": 137.3,
+     "height": 96.7
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194552-339_button.jpg63466": {
+  "filename": "20261009-194552-339_button.jpg",
+  "size": 63466,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 316.1,
+     "y": 171.6,
+     "width": 87.7,
+     "height": 138.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194605-335_button.jpg74410": {
+  "filename": "20261009-194605-335_button.jpg",
+  "size": 74410,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 236.2,
+     "y": 156.9,
+     "width": 157.4,
+     "height": 163.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   },
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 1.4,
+     "y": 4.4,
+     "width": 76.1,
+     "height": 475.6
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194619-803_button.jpg69197": {
+  "filename": "20261009-194619-803_button.jpg",
+  "size": 69197,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 233.2,
+     "y": 174.6,
+     "width": 155.8,
+     "height": 175.1
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194627-537_button.jpg49572": {
+  "filename": "20261009-194627-537_button.jpg",
+  "size": 49572,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261009-194638-934_button.jpg98124": {
+  "filename": "20261009-194638-934_button.jpg",
+  "size": 98124,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 234.2,
+     "y": 393.8,
+     "width": 75.4,
+     "height": 56.1
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194647-070_button.jpg53006": {
+  "filename": "20261009-194647-070_button.jpg",
+  "size": 53006,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261009-194656-673_button.jpg95606": {
+  "filename": "20261009-194656-673_button.jpg",
+  "size": 95606,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 161.2,
+     "y": 283.4,
+     "width": 118.8,
+     "height": 55.0
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261009-194749-070_button.jpg69067": {
+  "filename": "20261009-194749-070_button.jpg",
+  "size": 69067,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 272.9,
+     "y": 247.3,
+     "width": 118.5,
+     "height": 152.7
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-091901-407_button.jpg85581": {
+  "filename": "20261012-091901-407_button.jpg",
+  "size": 85581,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261012-091910-345_button.jpg96066": {
+  "filename": "20261012-091910-345_button.jpg",
+  "size": 96066,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 251.5,
+     "y": 197.5,
+     "width": 62.0,
+     "height": 83.6
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   },
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 231.4,
+     "y": 124.1,
+     "width": 67.2,
+     "height": 39.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-091930-752_button.jpg95350": {
+  "filename": "20261012-091930-752_button.jpg",
+  "size": 95350,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 183.5,
+     "y": 121.9,
+     "width": 52.6,
+     "height": 39.8
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-091949-361_button.jpg113040": {
+  "filename": "20261012-091949-361_button.jpg",
+  "size": 113040,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 212.2,
+     "y": 129.2,
+     "width": 53.5,
+     "height": 35.1
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   },
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 266.1,
+     "y": 127.9,
+     "width": 15.4,
+     "height": 24.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092005-830_button.jpg78977": {
+  "filename": "20261012-092005-830_button.jpg",
+  "size": 78977,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 286.2,
+     "y": 286.6,
+     "width": 46.6,
+     "height": 34.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   },
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 305.5,
+     "y": 255.4,
+     "width": 35.1,
+     "height": 18.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092018-096_button.jpg86520": {
+  "filename": "20261012-092018-096_button.jpg",
+  "size": 86520,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261012-092031-565_button.jpg69999": {
+  "filename": "20261012-092031-565_button.jpg",
+  "size": 69999,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 376.1,
+     "y": 145.3,
+     "width": 115.7,
+     "height": 150.7
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092041-565_button.jpg58991": {
+  "filename": "20261012-092041-565_button.jpg",
+  "size": 58991,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 278.5,
+     "y": 171.6,
+     "width": 115.5,
+     "height": 61.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092050-171_button.jpg91446": {
+  "filename": "20261012-092050-171_button.jpg",
+  "size": 91446,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 391.9,
+     "y": 65.9,
+     "width": 130.9,
+     "height": 70.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092058-770_button.jpg70737": {
+  "filename": "20261012-092058-770_button.jpg",
+  "size": 70737,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 238.7,
+     "y": 276.8,
+     "width": 52.2,
+     "height": 97.5
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092107-430_button.jpg87330": {
+  "filename": "20261012-092107-430_button.jpg",
+  "size": 87330,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 302.0,
+     "y": 235.7,
+     "width": 78.7,
+     "height": 109.9
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092117-630_button.jpg95824": {
+  "filename": "20261012-092117-630_button.jpg",
+  "size": 95824,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 226.2,
+     "y": 124.7,
+     "width": 159.4,
+     "height": 100.1
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092126-967_button.jpg105142": {
+  "filename": "20261012-092126-967_button.jpg",
+  "size": 105142,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 247.5,
+     "y": 149.8,
+     "width": 66.5,
+     "height": 89.4
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092136-032_button.jpg99623": {
+  "filename": "20261012-092136-032_button.jpg",
+  "size": 99623,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 222.0,
+     "y": 132.6,
+     "width": 86.8,
+     "height": 151.4
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092153-443_button.jpg70355": {
+  "filename": "20261012-092153-443_button.jpg",
+  "size": 70355,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 249.0,
+     "y": 219.0,
+     "width": 77.9,
+     "height": 45.8
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092249-198_button.jpg107074": {
+  "filename": "20261012-092249-198_button.jpg",
+  "size": 107074,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 158.4,
+     "y": 44.5,
+     "width": 39.2,
+     "height": 68.4
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092253-134_button.jpg108114": {
+  "filename": "20261012-092253-134_button.jpg",
+  "size": 108114,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 218.2,
+     "y": 53.9,
+     "width": 47.9,
+     "height": 77.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092309-873_button.jpg104075": {
+  "filename": "20261012-092309-873_button.jpg",
+  "size": 104075,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 164.7,
+     "y": 12.0,
+     "width": 90.7,
+     "height": 141.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092322-145_button.jpg102405": {
+  "filename": "20261012-092322-145_button.jpg",
+  "size": 102405,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 197.2,
+     "y": 78.3,
+     "width": 136.5,
+     "height": 84.3
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092332-883_button.jpg97246": {
+  "filename": "20261012-092332-883_button.jpg",
+  "size": 97246,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 181.4,
+     "y": 119.8,
+     "width": 93.7,
+     "height": 98.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261012-092347-084_button.jpg81829": {
+  "filename": "20261012-092347-084_button.jpg",
+  "size": 81829,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 227.2,
+     "y": 111.7,
+     "width": 45.8,
+     "height": 83.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163325-598_button.jpg58843": {
+  "filename": "20261015-163325-598_button.jpg",
+  "size": 58843,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261015-163341-326_button.jpg73763": {
+  "filename": "20261015-163341-326_button.jpg",
+  "size": 73763,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 237.4,
+     "y": 80.0,
+     "width": 143.3,
+     "height": 102.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163350-191_button.jpg80653": {
+  "filename": "20261015-163350-191_button.jpg",
+  "size": 80653,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 151.4,
+     "y": 33.4,
+     "width": 134.3,
+     "height": 99.3
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163400-455_button.jpg73457": {
+  "filename": "20261015-163400-455_button.jpg",
+  "size": 73457,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 234.4,
+     "y": 55.2,
+     "width": 132.2,
+     "height": 118.1
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163408-586_button.jpg73738": {
+  "filename": "20261015-163408-586_button.jpg",
+  "size": 73738,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261015-163419-053_button.jpg80957": {
+  "filename": "20261015-163419-053_button.jpg",
+  "size": 80957,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 111.2,
+     "y": 282.8,
+     "width": 94.1,
+     "height": 90.7
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163424-653_button.jpg76779": {
+  "filename": "20261015-163424-653_button.jpg",
+  "size": 76779,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 344.8,
+     "y": 148.5,
+     "width": 91.3,
+     "height": 136.5
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163442-383_button.jpg78611": {
+  "filename": "20261015-163442-383_button.jpg",
+  "size": 78611,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 218.2,
+     "y": 296.9,
+     "width": 71.9,
+     "height": 61.2
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163449-180_button.jpg78198": {
+  "filename": "20261015-163449-180_button.jpg",
+  "size": 78198,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 160.9,
+     "y": 131.8,
+     "width": 106.1,
+     "height": 68.9
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163503-854_button.jpg69112": {
+  "filename": "20261015-163503-854_button.jpg",
+  "size": 69112,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 315.3,
+     "y": 393.2,
+     "width": 59.5,
+     "height": 80.4
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163510-850_button.jpg86109": {
+  "filename": "20261015-163510-850_button.jpg",
+  "size": 86109,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 261.4,
+     "y": 338.0,
+     "width": 44.1,
+     "height": 61.6
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163553-307_button.jpg61444": {
+  "filename": "20261015-163553-307_button.jpg",
+  "size": 61444,
+  "regions": [],
+  "file_attributes": {}
+ },
+ "20261015-163602-642_button.jpg74000": {
+  "filename": "20261015-163602-642_button.jpg",
+  "size": 74000,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 118.1,
+     "y": 415.4,
+     "width": 123.6,
+     "height": 64.6
+    },
+    "region_attributes": {
+     "Class": "Blacky"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163639-168_button.jpg68532": {
+  "filename": "20261015-163639-168_button.jpg",
+  "size": 68532,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 229.3,
+     "y": 406.4,
+     "width": 87.7,
+     "height": 73.2
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163648-303_button.jpg76948": {
+  "filename": "20261015-163648-303_button.jpg",
+  "size": 76948,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 208.6,
+     "y": 215.0,
+     "width": 281.6,
+     "height": 265.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163700-432_button.jpg69498": {
+  "filename": "20261015-163700-432_button.jpg",
+  "size": 69498,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 107.0,
+     "y": 236.6,
+     "width": 56.5,
+     "height": 69.7
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163708-164_button.jpg61811": {
+  "filename": "20261015-163708-164_button.jpg",
+  "size": 61811,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 263.5,
+     "y": 293.9,
+     "width": 53.9,
+     "height": 92.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163719-294_button.jpg67052": {
+  "filename": "20261015-163719-294_button.jpg",
+  "size": 67052,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 48.8,
+     "y": 308.0,
+     "width": 104.4,
+     "height": 80.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163735-423_button.jpg74240": {
+  "filename": "20261015-163735-423_button.jpg",
+  "size": 74240,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 231.9,
+     "y": 314.0,
+     "width": 68.4,
+     "height": 80.4
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163753-151_button.jpg66933": {
+  "filename": "20261015-163753-151_button.jpg",
+  "size": 66933,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 222.9,
+     "y": 328.1,
+     "width": 20.1,
+     "height": 27.0
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ },
+ "20261015-163807-086_button.jpg66220": {
+  "filename": "20261015-163807-086_button.jpg",
+  "size": 66220,
+  "regions": [
+   {
+    "shape_attributes": {
+     "name": "rect",
+     "x": 228.4,
+     "y": 284.1,
+     "width": 21.0,
+     "height": 18.8
+    },
+    "region_attributes": {
+     "Class": "Niche"
+    }
+   }
+  ],
+  "file_attributes": {}
+ }
+}

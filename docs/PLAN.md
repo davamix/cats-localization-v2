@@ -85,6 +85,7 @@ real camera (6), then speed (7). Performance work is intentionally left until ev
 | 2026-10-08 | **Status LED** on GPIO 24 and **long press (5 s) = clean power-off** (sudoers rule for `systemctl poweroff` only); short presses capture on release | User request (LED) and recommendation accepted by the user (power-off): unplugging while the SD card is written can corrupt it. Capturing on release keeps a long press from also taking a picture. |
 | 2026-10-08 | **No captures before the clock is NTP-synchronised**; each capture records its `session` (one per power-on) | The Pi has no clock battery: after a power-on the clock is behind by the time it was off until NTP syncs, so a capture would get the wrong date and day split. |
 | 2026-10-08 | **No timer captures** in the collection service: all pictures by hand | User decision. `--capture-every` stays available. |
+| 2026-10-18 | Label Studio runs in **Docker**; the captures are **copied into its mounted data folder** under the same relative path as in `data/` (`tools/captures_to_labelstudio.py --copy-to`), and the container's local-files document root is `/label-studio/data` | The user's setup. A container can't read the repository, and a Windows document root doesn't exist inside it. Keeping the relative path lets `tools/labelstudio_to_via.py` map the tasks back to the repository's copies. |
 
 ## Environment
 
@@ -111,7 +112,8 @@ are near-duplicates of training photos (validation scores will be inflated), and
 frame (box width ≥ 18% of the image), unlike what a fixed camera across a room will see.
 
 **Pi-camera captures (phase 6)**: 640×480 JPEGs from the Pi camera with model pre-labels, in `data/pi-camera/captures/`
-(images not in git). As of 2026-10-04: 19 hand-held test captures, none labelled yet. Target: ~500 labelled images
+(images not in git). As of 2026-10-18: 105 captures over 5 days, 91 labelled (10 empty scenes, 5 with both cats, 86
+boxes) and 14 skipped; on them v0.1.0 finds only 21% of the cats at confidence 0.5. Target: ~500 labelled images
 (both cats, each alone near and far, empty scenes, three kinds of lighting) with a test set held out by capture day;
 see the [phase 6 collection plan](phases/phase-6-real-data.md#collection-plan).
 
@@ -119,11 +121,14 @@ see the [phase 6 collection plan](phases/phase-6-real-data.md#collection-plan).
 
 ```
 cats-localization-v2/
+├── .claude/skills/        # Claude Code skills: /pi, /labelstudio-import, /labelstudio-export (phase 6)
+├── CLAUDE.md             # always-loaded notes for Claude: where things are, rules
 ├── data/                 # images (not in git) + VIA annotation JSONs (in git); data/pi-camera/ = Pi captures (phase 6)
 ├── datasets/             # generated YOLO dataset (not in git)
 ├── docs/
 │   ├── PLAN.md           # this file
 │   ├── results.md        # metrics and benchmarks (created in phase 2)
+│   ├── label-studio.md   # Label Studio in Docker: setup, project, batch routine (phase 6)
 │   └── phases/           # one document per phase
 ├── pi/                   # code that runs on the Raspberry Pi
 ├── scripts/              # PC-side helpers: Pi remote access, deploy, pull captures

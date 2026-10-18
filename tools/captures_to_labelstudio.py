@@ -2,30 +2,59 @@
 
     python tools/captures_to_labelstudio.py                                   # every day in data/pi-camera/captures
     python tools/captures_to_labelstudio.py --days 2026-10-04 2026-10-05      # only these days
+    python tools/captures_to_labelstudio.py --copy-to C:/Users/<user>/captures   # + copy the images (Docker, below)
+    python tools/captures_to_labelstudio.py --new-only C:/Users/<user>/captures/label_studio.sqlite3 \
+        --copy-to C:/Users/<user>/captures    # only captures not in Label Studio yet (the usual batch)
 
 Each capture from pi/app.py (data/pi-camera/captures/<day>/<name>.jpg + <name>.json, downloaded with
 scripts/pull_captures.py) becomes one task:
-    data         image (a Label Studio local-files URL), capture name, day, source (button / web / timer), time, lux
+    data         image (a Label Studio local-files URL), capture name, day, session, source (button / web / timer),
+                 time, lux
     predictions  the pre-labels: the detections of the model on the Pi with a score >= --min-score, as editable boxes
                  (captures without detections get no prediction)
 The labeling config is tools/labelstudio_config.xml. Output (git-ignored): data/pi-camera/labelstudio/<name>.json, to
 import in the project with Import > Upload files.
 
-Label Studio reads the images from disk, so it must run with
+Label Studio reads the images from disk: the image URL is /data/local-files/?d=pi-camera/captures/<day>/<name>.jpg,
+i.e. the image's path relative to --document-root (this repository's data/). Label Studio must run with
     LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
-    LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=<this repository>/data      (= --document-root)
-and the project needs a "Local files" source storage whose absolute path is the captures folder (no sync needed). Full
-steps: docs/phases/phase-6-real-data.md.
+    LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=<a folder holding pi-camera/captures/<day>/<name>.jpg>
+and the project needs a "Local files" source storage for <that folder>/pi-camera/captures (no sync needed).
+- Label Studio installed on the PC: the document root can be this repository's data/ folder itself.
+- Label Studio in Docker (our setup since 2026-10-18) can't see the repository: --copy-to <the folder mounted as
+  /label-studio/data> also copies the images there, under the same relative path (only missing files), and the
+  container runs with LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/data.
+tools/labelstudio_to_via.py maps the URLs back to this repository's data/.
+
+--new-only <label_studio.sqlite3> reads Label Studio's database (read-only) and leaves out every capture whose image is
+already a task in any project, so a batch holds exactly the new pictures, also new ones from a day imported before.
+Full steps: docs/label-studio.md.
 """
 import argparse
 import json
+import shutil
+import sqlite3
+import time
 from collections import Counter
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CAPTURES = REPO_ROOT / "data" / "pi-camera" / "captures"
 FROM_NAME, TO_NAME = "label", "image"  # as in tools/labelstudio_config.xml
+
+
+def imported_images(database: Path) -> set[str]:
+    """Image paths (the d= of local-files URLs) of every task in a Label Studio database, opened read-only."""
+    connection = sqlite3.connect(f"file:{database.resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        paths = set()
+        for (data,) in connection.execute("SELECT data FROM task"):
+            image = json.loads(data).get("image", "")
+            paths.update(parse_qs(urlparse(image).query).get("d", []))
+        return paths
+    finally:
+        connection.close()
 
 
 def capture_task(sidecar: Path, document_root: Path, min_score: float) -> dict:
@@ -36,7 +65,8 @@ def capture_task(sidecar: Path, document_root: Path, min_score: float) -> dict:
     width, height = info["width"], info["height"]
     relative = image.resolve().relative_to(document_root.resolve()).as_posix()
     task = {"data": {"image": f"/data/local-files/?d={quote(relative)}", "capture": image.stem,
-                     "day": image.parent.name, "source": info["source"], "time": info["time"],
+                     "day": image.parent.name, "session": info.get("session"),  # no session before 2026-10-08
+                     "source": info["source"], "time": info["time"],
                      "lux": round(info["camera"]["Lux"]) if "Lux" in info["camera"] else None}}
     results = []
     for i, detection in enumerate(d for d in info["detections"] if d["score"] >= min_score):
@@ -65,6 +95,11 @@ def main():
     parser.add_argument("--document-root", type=Path, default=REPO_ROOT / "data",
                         help="LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT of the Label Studio server")
     parser.add_argument("--out", type=Path, help="task file (default: data/pi-camera/labelstudio/<days>.json)")
+    parser.add_argument("--new-only", type=Path, metavar="DB",
+                        help="leave out captures already in Label Studio; DB = its label_studio.sqlite3 (read-only)")
+    parser.add_argument("--copy-to", type=Path, metavar="DIR",
+                        help="also copy the images to DIR under their path relative to --document-root (missing "
+                             "files only), for a Label Studio that can't read this repository, e.g. in Docker")
     args = parser.parse_args()
 
     days = args.days or sorted(p.name for p in args.captures.iterdir() if p.is_dir())
@@ -76,10 +111,35 @@ def main():
         sidecars += sorted(folder.glob("*.json"))
     if not sidecars:
         parser.error(f"no captures in {args.captures} for {', '.join(days) or 'any day'}")
+    if args.new_only:
+        if not args.new_only.is_file():
+            parser.error(f"no Label Studio database at {args.new_only}")
+        imported = imported_images(args.new_only)
+        root = args.document_root.resolve()
+        found = len(sidecars)
+        sidecars = [s for s in sidecars if s.with_suffix(".jpg").resolve().relative_to(root).as_posix() not in imported]
+        print(f"{found - len(sidecars)} of {found} captures are already in Label Studio")
+        if not sidecars:
+            print("nothing new to import")
+            return
+        days = sorted({s.parent.name for s in sidecars})
 
     tasks = [capture_task(s, args.document_root, args.min_score) for s in sidecars]
+    if args.copy_to:
+        copied = 0
+        for sidecar in sidecars:
+            image = sidecar.with_suffix(".jpg")
+            target = args.copy_to / image.resolve().relative_to(args.document_root.resolve())
+            if target.exists() and target.stat().st_size == image.stat().st_size:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(image, target)
+            copied += 1
+        print(f"copied {copied} of {len(sidecars)} images to {args.copy_to} (the others were there already)")
     name = days[0] if len(days) == 1 else f"{days[0]}_to_{days[-1]}"
     out = args.out or REPO_ROOT / "data" / "pi-camera" / "labelstudio" / f"{name}.json"
+    if not args.out and out.exists():  # an earlier batch of the same days: keep it
+        out = out.with_name(f"{name}_{time.strftime('%Y%m%d-%H%M%S')}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(tasks, indent=1) + "\n", encoding="utf-8", newline="\n")
 

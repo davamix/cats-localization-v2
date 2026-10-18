@@ -67,7 +67,7 @@ def main():
             if i % 50 == 0:
                 print(f"  {i} / {len(new)} files", flush=True)
 
-        _, free = pi.run(f"df -h --output=avail {source} | tail -1", echo=False)
+        _, free = pi.run(f"df -h --output=avail {source} | tail -1", echo=False, timeout=60)
 
     for relative, remote_size, local_size in conflicts:
         print(f"CONFLICT {relative}: {remote_size} bytes on the Pi, {local_size} on the PC (left alone)")

@@ -48,4 +48,5 @@ data/pi-camera/
 `cats-annotations.json` has the VIA 2.0.8 layout described above, with `rect` regions (x, y, width, height in
 pixels) instead of polygons; an image with no regions is a reviewed empty scene. Only the annotation file is tracked;
 images, the per-capture JSON files and the Label Studio files are not. The captures can show people: they go into
-the Drive zip only after a check. Labelling workflow: [phase 6](../docs/phases/phase-6-real-data.md#labelling-workflow-label-studio).
+the Drive zip only after a check. Label Studio exports go to `data/annotations/` (not in git: they hold user ids).
+Labelling: [docs/label-studio.md](../docs/label-studio.md).
