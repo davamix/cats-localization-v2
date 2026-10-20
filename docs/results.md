@@ -7,6 +7,37 @@ Metrics and benchmarks for the cats detector. Newest phase at the top of each se
 Capture tooling only so far; no retraining yet. Same Pi, model and supply as phase 5, but the Pi was moved to
 another room that morning.
 
+### Second labelled batch (2026-10-20)
+
+All 77 captures of 2026-10-18 and 2026-10-20 (collection days 4 and 5, both train days) reviewed the same way: 75
+submitted, 2 skipped. The project now holds 182 tasks: 166 submitted, 16 skipped.
+
+| Day | Images | Empty | Both cats | Boxes | Boxes < 15% of the frame width |
+|---|---|---|---|---|---|
+| 2026-10-18 | 36 | 4 | 10 | 42 | 30 |
+| 2026-10-20 | 39 | 1 | 22 | 60 | 43 |
+| **This batch** | **75** | **5** | **32** | **102** (Blacky 47, Niche 55) | **73** |
+| **All labelled** | **166** | **15** | **37** | **188** (Blacky 91, Niche 97) | **117** |
+
+By split: train 124 images (34 with both cats), val 21 (3), test 21 (0). Val and test didn't change: the test day
+still has no image with both cats.
+
+v0.1.0's pre-labels against the labels (IoU ≥ 0.5):
+
+| Confidence | Images | Cats found, right name | Wrong name | Missed | False boxes (on empty scenes) |
+|---|---|---|---|---|---|
+| 0.5 (the live app) | this batch | **19 / 102 (19%)** | 1 | 82 | 8 (0) |
+| 0.25 (pre-labels) | this batch | 24 / 102 (24%) | 1 | 77 | 17 (0) |
+| 0.5 | all 166 | 37 / 188 (20%) | 1 | 150 | 15 (1) |
+| 0.5 | test day only | 1 / 18 (6%) | 0 | 17 | 1 (0) |
+
+- Same picture as the first batch at 0.5 (19% vs 21%), worse at 0.25 (24% vs 34%): this batch has many more
+  images with both cats (32 of 75) and more small boxes (72% vs 51%).
+- The first mix-up of the two cats: a close-up of Blacky got "Niche 0.65" and "Blacky 0.33" on the same box
+  (`20261020-102203-387`).
+- Review: in 40 of the 75 images the model had no box and the user drew them; 26 needed edits, 4 kept the pre-labels
+  unchanged, 5 were empty without pre-labels.
+
 ### First labelled batch: v0.1.0 against human labels (2026-10-18)
 
 All 105 captures of 2026-10-04 to 2026-10-15 reviewed in Label Studio (pre-labels from the Pi, corrected by hand):

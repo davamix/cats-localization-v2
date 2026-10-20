@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | In progress: capture tooling (autostart, button, LED), download and labelling tools done; collection and labelling next |
-| **Last updated** | 2026-10-18 |
+| **Status** | In progress: capture and labelling tooling done; collecting and labelling in batches (166 images labelled after 5 collection days) |
+| **Last updated** | 2026-10-20 |
 | **Depends on** | Phase 5 |
 
 ## Goal
@@ -38,6 +38,8 @@ dataset was taken with a different camera, has one cat per image and no empty sc
 - [ ] Label them in Label Studio (import, review, export, convert, commit `data/pi-camera/captures/cats-annotations.json`).
       **First batch done 2026-10-18**: all 105 captures of 2026-10-04 to 2026-10-15 reviewed (91 submitted, 14
       skipped), exported, converted and checked; the converters now work on a real export.
+      **Second batch done 2026-10-20**: all 77 captures of 2026-10-18 and 2026-10-20 (75 submitted, 2 skipped); in
+      total 166 labelled images, 188 boxes.
 - [x] **Tooling for the routine** (2026-10-18): Claude Code skills `/labelstudio-import`, `/labelstudio-export` and
       `/pi` in `.claude/skills/`, a `CLAUDE.md`, the Label Studio guide [docs/label-studio.md](../label-studio.md),
       `tools/label_report.py` (counts per split, review changes, deployed model vs labels, contact sheets),
@@ -218,6 +220,11 @@ settings, the task file format, the batch routine, export and conversion, and tr
   images the model had no box at all and the user drew them. **v0.1.0 against these labels** (its own pre-labels on
   the same frames, IoU ≥ 0.5): at the app's 0.5 it finds **18 of 86 cats (21%)** with 7 false boxes; at 0.25, 29
   (34%) with 17 false boxes; never the wrong name. The model mostly fails by missing cats, above all small ones.
+- **2026-10-20, second labelled batch** (2026-10-18 and 2026-10-20, both train days): 75 images (5 empty, 32 with
+  both cats), 47 Blacky and 55 Niche boxes, 73 of the 102 narrower than 15% of the frame. v0.1.0 finds **19 of 102
+  (19%)** at 0.5 and 24% at 0.25, and mixes up the cats once (a close-up of Blacky called Niche 0.65). All labelled
+  so far: 166 images (train 124, val 21, test 21), 188 boxes; v0.1.0 finds 20% of them at 0.5, still 1 of 18 on
+  the test day. Details in [results.md](../results.md#second-labelled-batch-2026-10-20).
 
 ## Handover notes
 
@@ -284,9 +291,13 @@ settings, the task file format, the batch routine, export and conversion, and tr
     predictions (48 boxes), pre-labelling on with model version "yolo26n_320_scale0.9 on the Pi (score >= 0.25)".
     **All 105 reviewed** (91 submitted, 14 skipped). The user exports to `data/annotations/` (git-ignored: the export
     holds user ids); the first export is `project-2-at-2026-10-18-14-15-8a64e426.json`, converted to
-    `data/pi-camera/captures/cats-annotations.json`. The empty extra projects were deleted. The next import starts
-    at the next capture day (`--days`), so no day is imported twice; export the whole project each time (the
-    converter rebuilds the file from it).
+    `data/pi-camera/captures/cats-annotations.json`. The empty extra projects were deleted. Export the whole
+    project each time (the converter rebuilds the file from it).
+  - State on 2026-10-20: **182 tasks, all reviewed** (166 submitted, 16 skipped); the second batch came from
+    `data/pi-camera/labelstudio/2026-10-18_to_2026-10-20.json` (`--new-only`), the current export is
+    `project-2-at-2026-10-20-09-43-cb448620.json`. Lesson from this batch: a label changed on a task that was already
+    submitted only counts after **Update**; the first export still had the old label (caught by the report's
+    per-day counts: 60 boxes on 38 images with a cat, one image had two Niche boxes).
   - The model list under Settings → Annotation only shows model versions of predictions already in the project:
     it stays empty until the task file is imported. The project's "Model" section (ML backend) is not needed.
   - The repo-root `/captures/` folder (git-ignored) is the leftover data folder of the 2026-10-04 instance, unused
@@ -311,3 +322,7 @@ settings, the task file format, the batch routine, export and conversion, and tr
 - **Next**: the user collects (plan above) with the button over ~1–2 weeks; label in batches, then build the
   combined dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days
   (baseline on the first test day, 2026-10-15: v0.1.0 finds 1 of 18 cats at 0.5).
+  - As of 2026-10-20 (5 collection days): the **next capture day is day 6, a test day**. The test set has no image
+    with both cats yet, so that day should include some; train already has 34.
+  - 2026-10-20: the Pi was briefly unreachable because of a problem with the user's access point (another device
+    answered at 192.168.2.107); after the fix it is back at 192.168.2.112, so nothing in `pi.env` changed.
