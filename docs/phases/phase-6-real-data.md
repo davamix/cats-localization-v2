@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | In progress: capture and labelling tooling done; collecting and labelling in batches (166 images labelled after 5 collection days) |
-| **Last updated** | 2026-10-20 |
+| **Status** | In progress: capture and labelling tooling done; collecting and labelling in batches (218 images labelled after 7 collection days) |
+| **Last updated** | 2026-10-22 |
 | **Depends on** | Phase 5 |
 
 ## Goal
@@ -40,6 +40,8 @@ dataset was taken with a different camera, has one cat per image and no empty sc
       skipped), exported, converted and checked; the converters now work on a real export.
       **Second batch done 2026-10-20**: all 77 captures of 2026-10-18 and 2026-10-20 (75 submitted, 2 skipped); in
       total 166 labelled images, 188 boxes.
+      **Third batch done 2026-10-22**: all 52 captures of 2026-10-21 (test) and 2026-10-22 (train), all submitted; in
+      total 218 labelled images (train 160, val 21, test 37), 249 boxes.
 - [x] **Tooling for the routine** (2026-10-18): Claude Code skills `/labelstudio-import`, `/labelstudio-export` and
       `/pi` in `.claude/skills/`, a `CLAUDE.md`, the Label Studio guide [docs/label-studio.md](../label-studio.md),
       `tools/label_report.py` (counts per split, review changes, deployed model vs labels, contact sheets),
@@ -169,9 +171,10 @@ image takes seconds when the model is right).
 - 2026-10-04 (19 hand-held test captures) and 2026-10-08 (5 captures from the autostart test, plus whatever is
   collected later that day) count as **train** days and are not numbered: the 1st collection day is the next day
   with captures.
-- By this rule (as of 2026-10-18): 2026-10-09 = day 1 (train), 2026-10-12 = day 2 (**validation**), 2026-10-15 =
-  day 3 (**test**). The test day so far has no image with both cats: capture both together on a later test day
-  (the 6th collection day).
+- By this rule (as of 2026-10-22): 2026-10-09 = day 1 (train), 2026-10-12 = day 2 (**validation**), 2026-10-15 =
+  day 3 (**test**), 2026-10-18 and 2026-10-20 = days 4 and 5 (train), 2026-10-21 = day 6 (**test**; it brought the
+  first test images with both cats, 11), 2026-10-22 = day 7 (train). `python tools/pi_camera_splits.py` prints the
+  current list.
 - Optional: one camera position that only appears on test days, to measure generalisation to a new view.
 
 ## Labelling workflow (Label Studio)
@@ -190,7 +193,7 @@ settings, the task file format, the batch routine, export and conversion, and tr
    `python tools/labelstudio_to_via.py data/annotations/<export>.json`, check, and commit
    `data/pi-camera/captures/cats-annotations.json`.
 
-## Results (2026-10-04 to 2026-10-18; details in [results.md](../results.md#phase-6--real-camera-data-2026-10-04))
+## Results (2026-10-04 to 2026-10-22; details in [results.md](../results.md#phase-6--real-camera-data-2026-10-04))
 
 - **Button**: no floating (0 edges in 15–30 s untouched with the pull-up), all 8 presses seen in both runs. Without
   debounce, 3 of 8 releases bounced (2–3 edges within 0.1–0.4 ms); with lgpio's 50 ms debounce, 16 clean edges
@@ -225,6 +228,11 @@ settings, the task file format, the batch routine, export and conversion, and tr
   (19%)** at 0.5 and 24% at 0.25, and mixes up the cats once (a close-up of Blacky called Niche 0.65). All labelled
   so far: 166 images (train 124, val 21, test 21), 188 boxes; v0.1.0 finds 20% of them at 0.5, still 1 of 18 on
   the test day. Details in [results.md](../results.md#second-labelled-batch-2026-10-20).
+- **2026-10-22, third labelled batch** (2026-10-21 = day 6, test; 2026-10-22 = day 7, train): 52 images (5 empty,
+  14 with both cats), 27 Blacky and 34 Niche boxes. v0.1.0 finds **8 of 61 (13%)** at 0.5, and **none of the 26
+  cats on the new test day** (both cats on the sofa in evening lamp light). All labelled so far: 218 images (train
+  160, val 21, test 37), 249 boxes; v0.1.0 finds 18% at 0.5, **1 of 44 on the two test days**. Details in
+  [results.md](../results.md#third-labelled-batch-2026-10-22).
 
 ## Handover notes
 
@@ -298,6 +306,11 @@ settings, the task file format, the batch routine, export and conversion, and tr
     `project-2-at-2026-10-20-09-43-cb448620.json`. Lesson from this batch: a label changed on a task that was already
     submitted only counts after **Update**; the first export still had the old label (caught by the report's
     per-day counts: 60 boxes on 38 images with a cat, one image had two Niche boxes).
+  - State on 2026-10-22: **234 tasks, all reviewed** (218 submitted, 16 skipped); the third batch came from
+    `data/pi-camera/labelstudio/2026-10-21_to_2026-10-22.json`, the current export is
+    `project-2-at-2026-10-22-08-01-f57b5284.json`. Lesson from this batch: a false pre-label can survive the review
+    (v0.1.0's "Blacky 0.30" on the black cat-face cushion, `20261021-180626-380`, a test image). The report counts it
+    as a cat found; only the contact sheets (and a full-size look) show it. The user deleted it and exported again.
   - The model list under Settings → Annotation only shows model versions of predictions already in the project:
     it stays empty until the task file is imported. The project's "Model" section (ML backend) is not needed.
   - The repo-root `/captures/` folder (git-ignored) is the leftover data folder of the 2026-10-04 instance, unused
@@ -322,7 +335,9 @@ settings, the task file format, the batch routine, export and conversion, and tr
 - **Next**: the user collects (plan above) with the button over ~1–2 weeks; label in batches, then build the
   combined dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days
   (baseline on the first test day, 2026-10-15: v0.1.0 finds 1 of 18 cats at 0.5).
-  - As of 2026-10-20 (5 collection days): the **next capture day is day 6, a test day**. The test set has no image
-    with both cats yet, so that day should include some; train already has 34.
+  - As of 2026-10-22 (7 collection days): day 8 is train, **day 9 is a test day**. Against the plan's ~350 / ~50 /
+    ~100–120 images: train 160, val 21, test 37. Empty scenes lag most (20 labelled of ~105 planned: train 14, test
+    4). The rule has only one validation day (day 2, 21 images), so val stays at 21 unless the user names another
+    validation day before its images are seen (open point).
   - 2026-10-20: the Pi was briefly unreachable because of a problem with the user's access point (another device
     answered at 192.168.2.107); after the fix it is back at 192.168.2.112, so nothing in `pi.env` changed.

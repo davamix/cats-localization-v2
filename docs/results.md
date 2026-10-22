@@ -7,6 +7,43 @@ Metrics and benchmarks for the cats detector. Newest phase at the top of each se
 Capture tooling only so far; no retraining yet. Same Pi, model and supply as phase 5, but the Pi was moved to
 another room that morning.
 
+### Third labelled batch (2026-10-22)
+
+All 52 captures of 2026-10-21 and 2026-10-22 (collection days 6 = **test** and 7 = train) reviewed and submitted,
+none skipped. The project now holds 234 tasks: 218 submitted, 16 skipped.
+
+| Day | Split | Images | Empty | Both cats | Boxes | Boxes < 15% of the frame width |
+|---|---|---|---|---|---|---|
+| 2026-10-21 | test | 16 | 1 | 11 | 26 | 9 |
+| 2026-10-22 | train | 36 | 4 | 3 | 35 | 25 |
+| **This batch** | | **52** | **5** | **14** | **61** (Blacky 27, Niche 34) | **34** |
+| **All labelled** | | **218** | **20** | **51** | **249** (Blacky 118, Niche 131) | **151** |
+
+By split: train 160 images (37 with both cats, 14 empty), val 21 (3, 2), test 37 (11, 4). The test set now has
+images with both cats.
+
+v0.1.0's pre-labels against the labels (IoU ≥ 0.5):
+
+| Confidence | Images | Cats found, right name | Wrong name | Missed | False boxes (on empty scenes) |
+|---|---|---|---|---|---|
+| 0.5 (the live app) | this batch | **8 / 61 (13%)** | 0 | 53 | 1 (0) |
+| 0.25 (pre-labels) | this batch | 9 / 61 (15%) | 0 | 52 | 6 (0) |
+| 0.5 | test day 2026-10-21 | **0 / 26** | 0 | 26 | 1 (0) |
+| 0.5 | both test days | 1 / 44 (2%) | 0 | 43 | 2 (0) |
+| 0.5 | all 218 | 45 / 249 (18%) | 1 | 203 | 16 (1) |
+
+- 2026-10-21 (test): two sessions at the sofa, 18:00–18:07, evening lamp light (55–228 lux, ~3300 K), both cats
+  lying together in 11 of 16 images. v0.1.0 finds none of the 26 cats at 0.5 and 1 at 0.25.
+- 2026-10-22 (train): two sessions at the desk and the next room, 09:15–09:25 (6–341 lux). Blacky lies on the desk
+  in a dark corner next to the microphone; the 8 cats found at 0.5 are 5 Niche and 3 Blacky.
+- Review: in 33 of the 52 images the model had no box and the user drew them; 9 needed edits, 5 kept the
+  pre-labels unchanged, 5 were empty without pre-labels.
+- The contact-sheet check caught a false pre-label kept by mistake: "Blacky 0.30" on the black cat-face cushion on
+  the sofa back (`20261021-180626-380`, a test image), which the report had counted as a cat found. The user deleted
+  it and exported again (`project-2-at-2026-10-22-08-01-f57b5284.json`; Blacky 119 → 118 boxes). Thin boxes checked
+  at full size and kept: Niche's ear tips at the bottom edge (`20261022-091552-661`) and Niche behind the office
+  chair (`20261022-091514-455`, confirmed by the user).
+
 ### Second labelled batch (2026-10-20)
 
 All 77 captures of 2026-10-18 and 2026-10-20 (collection days 4 and 5, both train days) reviewed the same way: 75
