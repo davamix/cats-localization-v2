@@ -1,6 +1,6 @@
 """Live stream web app for the Raspberry Pi: camera + cat detector, watched in the browser, plus captures for training.
 
-    python pi/app.py --model models/yolo26n_320_scale0.9
+    python pi/app.py --model models/yolo26n_320_scale0.9_pi_seed0
 
 then open http://<pi-ip>:8000/ :
     /                   page with the live stream, stats and a Capture button
@@ -1025,7 +1025,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--model", default="models/yolo26n_320_scale0.9", help="exported model folder")
+    parser.add_argument("--model", default="models/yolo26n_320_scale0.9_pi_seed0",
+                        help="exported model folder (v0.1.0 = models/yolo26n_320_scale0.9)")
     parser.add_argument("--conf", type=float, default=0.5, help="minimum detection score")
     parser.add_argument("--threads", type=int, default=2,
                         help="ncnn threads (2: more trigger under-voltage on the current supply, see phase 4)")

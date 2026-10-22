@@ -58,9 +58,10 @@ def load_labels(annotations: Path) -> dict[str, list[tuple[str, tuple]]]:
     return labels
 
 
-def match(labels, predictions) -> Counter:
-    """Greedy matching of label boxes to predicted boxes (best IoU first come) -> counts."""
-    counts, used = Counter(), set()
+def assign(labels, predictions) -> list[int | None]:
+    """Greedy matching of label boxes to predicted boxes (best IoU first come) -> for each label box, the index of its
+    predicted box (IoU >= IOU_MATCH) or None."""
+    assigned, used = [], set()
     for cls, box in labels:
         best, best_i = 0.0, None
         for i, (pcls, pbox) in enumerate(predictions):
@@ -68,10 +69,22 @@ def match(labels, predictions) -> Counter:
                 best, best_i = value, i
         if best >= IOU_MATCH:
             used.add(best_i)
-            counts["right" if predictions[best_i][0] == cls else "wrong"] += 1
+            assigned.append(best_i)
         else:
+            assigned.append(None)
+    return assigned
+
+
+def match(labels, predictions) -> Counter:
+    """Counts of the greedy matching: right / wrong (name) / missed label boxes, false (unmatched) predicted boxes."""
+    counts = Counter()
+    assigned = assign(labels, predictions)
+    for (cls, _), i in zip(labels, assigned):
+        if i is None:
             counts["missed"] += 1
-    counts["false"] += len(predictions) - len(used)
+        else:
+            counts["right" if predictions[i][0] == cls else "wrong"] += 1
+    counts["false"] += len(predictions) - sum(i is not None for i in assigned)
     counts["false_empty"] += 0 if labels else len(predictions)
     return counts
 

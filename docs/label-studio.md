@@ -94,7 +94,8 @@ python tools/captures_to_labelstudio.py --new-only $env:USERPROFILE/captures/lab
 ```
 
 The second command reads Label Studio's database (read-only) to leave out every picture that is already a task, writes
-the task file `data/pi-camera/labelstudio/<days>.json` with the Pi's detections as pre-labels, and copies the images
+the task file `data/pi-camera/labelstudio/<days>.json` with the Pi's detections as pre-labels (except on test days,
+which are labelled from scratch so the model under test can't shape its own labels), and copies the images
 into the Label Studio folder under the same relative path. Import that file (section 3, step 4), and only that one:
 older files in the folder are earlier batches. (`--days <YYYY-MM-DD ...>` instead of `--new-only` selects whole days.)
 

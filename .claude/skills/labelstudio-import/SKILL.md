@@ -16,6 +16,9 @@ description: Bring new pictures from the Raspberry Pi into Label Studio for labe
   same relative path as in `data/`. Tasks reference them as `/data/local-files/?d=pi-camera/captures/<day>/<name>.jpg`.
 - The project "cats-localization-v2" is already set up (labelling config, Local files storage, pre-labelling with
   the Pi model). Setup, re-creating the container and troubleshooting: `docs/label-studio.md`.
+- **Test days get no pre-labels** (user decision 2026-10-22): `captures_to_labelstudio.py` leaves the predictions out
+  of every capture from a test day (`tools/pi_camera_splits.py`), because pre-labels from the model under test would
+  flatter it. Don't work around this with `--min-score` or by hand.
 
 ## Steps (Git Bash, repository root)
 
@@ -40,7 +43,9 @@ description: Bring new pictures from the Raspberry Pi into Label Studio for labe
 5. **Tell the user**, briefly:
    - how many new pictures, from which days, how many came with pre-labels;
    - the split of the new days (`.venv/Scripts/python tools/pi_camera_splits.py`): if a new day is a val/test day,
-     its pictures are held out from training;
+     its pictures are held out from training; a test day's pictures come **without pre-labels**, so every box is
+     drawn by hand: look carefully for small and dark cats (the test labels decide whether a model reaches its
+     target);
    - the file to import, `data/pi-camera/labelstudio/<...>.json`: in the project, **Import → Upload Files →** choose
      the file **→ click Import** (top right; uploading alone creates no tasks). Import only the file this run wrote:
      older files in that folder are records of earlier batches;

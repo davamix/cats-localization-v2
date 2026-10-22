@@ -11,7 +11,8 @@ scripts/pull_captures.py) becomes one task:
     data         image (a Label Studio local-files URL), capture name, day, session, source (button / web / timer),
                  time, lux
     predictions  the pre-labels: the detections of the model on the Pi with a score >= --min-score, as editable boxes
-                 (captures without detections get no prediction)
+                 (captures without detections get no prediction). Captures of test days (tools/pi_camera_splits.py)
+                 never get pre-labels: they would flatter the model under test (phase 6 decision 2026-10-22).
 The labeling config is tools/labelstudio_config.xml. Output (git-ignored): data/pi-camera/labelstudio/<name>.json, to
 import in the project with Import > Upload files.
 
@@ -39,8 +40,8 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-CAPTURES = REPO_ROOT / "data" / "pi-camera" / "captures"
+from pi_camera_splits import CAPTURES, REPO_ROOT, capture_days, split_days
+
 FROM_NAME, TO_NAME = "label", "image"  # as in tools/labelstudio_config.xml
 
 
@@ -57,7 +58,7 @@ def imported_images(database: Path) -> set[str]:
         connection.close()
 
 
-def capture_task(sidecar: Path, document_root: Path, min_score: float) -> dict:
+def capture_task(sidecar: Path, document_root: Path, min_score: float, prelabels: bool = True) -> dict:
     info = json.loads(sidecar.read_text(encoding="utf-8"))
     image = sidecar.with_name(info["image"])
     if not image.is_file():
@@ -69,7 +70,8 @@ def capture_task(sidecar: Path, document_root: Path, min_score: float) -> dict:
                      "source": info["source"], "time": info["time"],
                      "lux": round(info["camera"]["Lux"]) if "Lux" in info["camera"] else None}}
     results = []
-    for i, detection in enumerate(d for d in info["detections"] if d["score"] >= min_score):
+    detections = info["detections"] if prelabels else []
+    for i, detection in enumerate(d for d in detections if d["score"] >= min_score):
         x1, y1, x2, y2 = detection["box"]
         x1, x2 = max(x1, 0), min(x2, width)
         y1, y2 = max(y1, 0), min(y2, height)
@@ -124,7 +126,9 @@ def main():
             return
         days = sorted({s.parent.name for s in sidecars})
 
-    tasks = [capture_task(s, args.document_root, args.min_score) for s in sidecars]
+    test_days = {day for day, (split, _) in split_days(capture_days(args.captures)).items() if split == "test"}
+    tasks = [capture_task(s, args.document_root, args.min_score, prelabels=s.parent.name not in test_days)
+             for s in sidecars]
     if args.copy_to:
         copied = 0
         for sidecar in sidecars:
@@ -146,8 +150,10 @@ def main():
     boxes = Counter(r["value"]["rectanglelabels"][0] for t in tasks for p in t.get("predictions", [])
                     for r in p["result"])
     with_boxes = sum("predictions" in t for t in tasks)
+    on_test_days = sum(s.parent.name in test_days for s in sidecars)
     print(f"{len(tasks)} tasks from {len(days)} day(s), {with_boxes} with pre-labels "
-          f"({', '.join(f'{k} {v}' for k, v in sorted(boxes.items())) or 'no boxes'}) -> {out}")
+          f"({', '.join(f'{k} {v}' for k, v in sorted(boxes.items())) or 'no boxes'})"
+          + (f", {on_test_days} from test days without pre-labels" if on_test_days else "") + f" -> {out}")
 
 
 if __name__ == "__main__":

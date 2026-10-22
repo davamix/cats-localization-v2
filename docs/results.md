@@ -4,8 +4,45 @@ Metrics and benchmarks for the cats detector. Newest phase at the top of each se
 
 ## Phase 6 — real camera data (2026-10-04)
 
-Capture tooling only so far; no retraining yet. Same Pi, model and supply as phase 5, but the Pi was moved to
+Capture tooling, labelled batches and a first retrain (2026-10-22). Same Pi, model and supply as phase 5, but the Pi was moved to
 another room that morning.
+
+### First retrain on Pi-camera data (2026-10-22)
+
+Same recipe as v0.1.0 (YOLO26n from COCO weights, imgsz 320, scale 0.9, 100 epochs, patience 30, batch 16), on
+`datasets/cats_pi` from `tools/via_to_yolo.py --pi-camera`:
+
+| Split | 2020 photos | Pi-camera | Total (empty) |
+|---|---|---|---|
+| train | 98 | 160 (train days) | 258 (14) |
+| val (`best.pt`) | 43 | 21 (validation day 2026-10-12) | 64 (2) |
+| test (comparisons only) | – | 37 (test days 2026-10-15, 2026-10-21) | 37 (4) |
+
+Three seeds, ~350 s each; mAP50 on the combined val 0.938 / 0.937 / 0.922 (mAP50-95 0.805 / 0.786 / 0.802). The
+seed was chosen on the Pi-camera validation day before the test days were looked at (rule: most cats found at 0.5,
+then fewer wrong boxes, then seed 0):
+
+| Model | Val day @0.5: found | Wrong boxes | Test days @0.5: found | Wrong boxes | Test @0.25: found |
+|---|---|---|---|---|---|
+| v0.1.0 (`yolo26n_320_scale0.9`) | 3 / 22 | 4 / 7 | 1 / 44 (2%) | 2 / 3 | 3 / 44 |
+| **`yolo26n_320_scale0.9_pi_seed0`** (chosen) | **15 / 22** | 1 / 16 | **17 / 44 (39%)** | 8 / 25 (32%) | 23 / 44 (52%), 23 / 46 wrong |
+| `..._pi_seed1` | 15 / 22 | 1 / 16 | 21 / 44 (48%) | 6 / 27 | |
+| `..._pi_seed2` | 14 / 22 | 3 / 17 | 16 / 44 (36%) | 6 / 22 | |
+
+NCNN models run on the PC on the saved JPEGs (`tools/compare_models.py`); "wrong boxes" = false boxes + wrong names,
+out of all boxes the model drew. **Target (≥ 85% found, ≤ 10% wrong boxes) not reached.**
+
+- Per test day (seed 0 at 0.5): 2026-10-15 (hand-held around the living room, daylight) 8 of 18; 2026-10-21 (both
+  cats lying on the sofa, evening lamp light) 9 of 26.
+- The 8 wrong boxes: 3 cover only a cat's head (IoU < 0.5, so the cat counts as missed as well), 2 are extra boxes
+  on a cat already found (one with the other name: "Niche 0.61" next to the right Blacky box), 3 are on objects:
+  a dark shoe-box lid ("Blacky 0.89"), a red shoe box with a toy ball ("Blacky 0.59"), a striped chair cushion
+  ("Niche 0.60"). No false box on an empty scene.
+- Every disagreement of both models was looked at full size: no label needed fixing.
+- Seed spread on the test days is 16–21 of 44: with this little data, one run's number is uncertain by several cats.
+- Sanity checks: the NCNN export of seed 0 matches PyTorch (verify_ncnn PASS, mAP identical); v0.1.0 run on the PC
+  gives the same test numbers as its pre-labels saved on the Pi; Ultralytics' own predict with v0.1.0 also finds
+  nothing in clear test pictures.
 
 ### Third labelled batch (2026-10-22)
 

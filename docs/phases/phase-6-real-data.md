@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In progress: capture and labelling tooling done; collecting and labelling in batches (218 images labelled after 7 collection days) |
+| **Status** | In progress: collecting and labelling in batches (218 images labelled after 7 collection days); first retrain 2026-10-22 finds 39% of the test cats (v0.1.0: 2%, target 85%), deployed on the Pi |
 | **Last updated** | 2026-10-22 |
 | **Depends on** | Phase 5 |
 
@@ -48,14 +48,24 @@ dataset was taken with a different camera, has one cat per image and no empty sc
       `tools/pi_camera_splits.py` (the day-split rule in code), `scripts/pi_status.py` (Pi status in one login) and
       `captures_to_labelstudio.py --new-only` (only pictures not in Label Studio yet).
 - [ ] Keep a held-out **Pi-camera test set** that is never used for training (split by whole days, see below).
-- [ ] Build the combined dataset (2020 + Pi-camera train days; Pi-camera validation and test days).
+- [x] Build the combined dataset (2020 + Pi-camera train days; Pi-camera validation and test days):
+      `python tools/via_to_yolo.py --pi-camera` → `datasets/cats_pi/` (2026-10-22). Train = 2020 train photos +
+      Pi-camera train days, val = 2020 validation photos + the Pi-camera validation day, and a separate `test` split
+      with the Pi-camera test days, only for comparing models.
 - [ ] Retrain (phase 2 scripts), re-export and verify (phase 3), redeploy (phase 4), and compare against `v0.1.0`
-      on the Pi-camera test set.
+      on the Pi-camera test set ([tools/compare_models.py](../../tools/compare_models.py)).
+      **First retrain 2026-10-22** on the 218 labelled images: `yolo26n_320_scale0.9_pi_seed0` finds 17 of 44 test
+      cats at 0.5 (v0.1.0: 1); the target is not reached. Exported, verified and **deployed on the Pi** the same
+      day (the service's default model; see the handover notes).
 - [ ] Publish a new Release when the new model is better.
 
 ## Done when
 
 - The Pi-camera test set exists and the new model beats `v0.1.0` on it.
+- **Target** (user decision 2026-10-22): on the Pi-camera test days, at the app's confidence 0.5, the model finds
+  **≥ 85% of the cats** (a box with IoU ≥ 0.5 and the right name) and **at most 1 in 10 of its boxes is wrong** (a
+  false box or the wrong name). The final check is a test day captured at the fixed spot where the Pi will live; the
+  hand-held test days so far show whether retraining helps.
 
 ## Capture design (as built 2026-10-04; collection mode 2026-10-08)
 
@@ -176,6 +186,12 @@ image takes seconds when the model is right).
   first test images with both cats, 11), 2026-10-22 = day 7 (train). `python tools/pi_camera_splits.py` prints the
   current list.
 - Optional: one camera position that only appears on test days, to measure generalisation to a new view.
+- **Test days are labelled without pre-labels** (user decision 2026-10-22): pre-labels from the model under test
+  would flatter it (a kept false pre-label counts as a cat found). `tools/captures_to_labelstudio.py` leaves the
+  predictions out of test-day tasks. After a model comparison, every disagreement on the test days (a false box or a
+  missed cat, of any model compared) is looked at full size, and a label is fixed only when the picture clearly shows
+  it is wrong: the same rule for every model, before the target is judged. The first two test days (2026-10-15,
+  2026-10-21) were labelled with v0.1.0's pre-labels, which if anything favours v0.1.0.
 
 ## Labelling workflow (Label Studio)
 
@@ -233,6 +249,14 @@ settings, the task file format, the batch routine, export and conversion, and tr
   cats on the new test day** (both cats on the sofa in evening lamp light). All labelled so far: 218 images (train
   160, val 21, test 37), 249 boxes; v0.1.0 finds 18% at 0.5, **1 of 44 on the two test days**. Details in
   [results.md](../results.md#third-labelled-batch-2026-10-22).
+- **2026-10-22, first retrain** (same settings as v0.1.0: YOLO26n, 320, scale 0.9, 100 epochs; 2020 photos + the
+  Pi-camera train days, 258 training images; seeds 0–2, seed 0 chosen on the Pi-camera validation day before the
+  test days were looked at). On the two test days at 0.5 it finds **17 of 44 cats (39%)**, v0.1.0 1 of 44; 8 of
+  its 25 boxes are wrong (32%). Target (85%, ≤ 10% wrong boxes) **not reached**. Seeds 1 and 2 find 21 and 16. Of
+  the 8 wrong boxes, 5 are on real cats (3 boxes on only the head, 2 extra boxes on a cat already found, one with
+  the other name) and 3 on objects (a shoe-box lid "Blacky 0.89", a red shoe box, a striped chair cushion). The
+  full-size check of every disagreement found no label to fix. Details in
+  [results.md](../results.md#first-retrain-on-pi-camera-data-2026-10-22).
 
 ## Handover notes
 
@@ -335,6 +359,24 @@ settings, the task file format, the batch routine, export and conversion, and tr
 - **Next**: the user collects (plan above) with the button over ~1–2 weeks; label in batches, then build the
   combined dataset with the day-based splits, retrain and compare against `v0.1.0` on the Pi-camera test days
   (baseline on the first test day, 2026-10-15: v0.1.0 finds 1 of 18 cats at 0.5).
+  - **First retrain (2026-10-22)**: `runs/train/yolo26n_320_scale0.9_pi_seed{0,1,2}` (git-ignored, ~350 s each),
+    NCNN exports in their `weights/best_ncnn_model/`; seed 0 verified with `tools/verify_ncnn.py --data
+    datasets/cats_pi/cats_pi.yaml` (PASS). Seed choice rule, fixed before looking at the test days: most cats found
+    at 0.5 on the Pi-camera validation day, then fewer wrong boxes, then seed 0 (seeds 0 and 1 tied at 15 of 22).
+    `pi/app.py` now defaults to `models/yolo26n_320_scale0.9_pi_seed0` (v0.1.0 stays on the Pi as
+    `models/yolo26n_320_scale0.9`; to go back, pass `--model` or change the default and redeploy). **Deployed
+    2026-10-22 ~11:15** with the user's OK (`scripts/deploy.py yolo26n_320_scale0.9_pi_seed0`, then
+    `systemctl restart cats-app`; Claude Code's auto mode blocks the deploy until the user confirms it). Captures from
+    then on record `yolo26n_320_scale0.9_pi_seed0` as their model, so train-day pre-labels come from it; earlier
+    captures keep v0.1.0's. `tools/label_report.py` scores whatever model each capture recorded, so its "deployed
+    model" lines mix both models once new batches come in: compare models with `tools/compare_models.py`.
+    After the restart: ready at 11:15:33, 4.0 detections/s (as with v0.1.0: same network size), 68 °C, no
+    under-voltage. The restart started a new `session` although the camera didn't move.
+  - `tools/compare_models.py <runs or model folders>` runs the NCNN models on the PC on the labelled captures of a
+    split (default test), prints found / wrong name / missed / false per day at 0.25 and 0.5, checks the target, and
+    draws every disagreement on sheets in `runs/compare/<date-time>/`. `--pi` adds the Pi's own pre-labels: for
+    v0.1.0 on the test days the PC run gives the same numbers (1 of 44 at 0.5). Ultralytics' own predict also finds
+    nothing in clear test pictures, so v0.1.0's misses are the model, not the pipeline.
   - As of 2026-10-22 (7 collection days): day 8 is train, **day 9 is a test day**. Against the plan's ~350 / ~50 /
     ~100–120 images: train 160, val 21, test 37. Empty scenes lag most (20 labelled of ~105 planned: train 14, test
     4). The rule has only one validation day (day 2, 21 images), so val stays at 21 unless the user names another
